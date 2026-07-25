@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.db.mongodb import user_collection
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/login"
+    tokenUrl="/auth/login"
 )
 
 credentials_exception = HTTPException(
