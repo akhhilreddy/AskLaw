@@ -3,7 +3,7 @@ import ProtectedRoute from "./ProtectedRoute";
 
 import Login from "../pages/auth/Login";
 import Signup from "../pages/auth/Signup";
-
+import Dashboard from "../pages/auth/Dashboard";
 export default function AppRoutes() {
   return (
     <Routes>

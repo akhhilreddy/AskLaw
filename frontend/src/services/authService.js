@@ -13,3 +13,18 @@ export const login = async (formData)=>{
     }
     
 }
+
+export const getCurrentUser = async () => {
+    const response = await api.get("/auth/me");
+    return response.data;
+};
+
+export const signup = async (formData) => {
+  try {
+    const response = await api.post("/auth/signup", formData);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
