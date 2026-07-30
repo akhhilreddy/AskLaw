@@ -7,6 +7,8 @@ from app.utils.security import (
     create_access_token,
     create_refresh_token
 )
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import Depends
 from fastapi import HTTPException, status
 from app.schemas.auth import UserLogin
 from app.schemas.auth import SignUpRequest
@@ -80,6 +82,52 @@ def login(user: UserLogin,response : Response):
     return {
         "access_token": access_token,
         "token_type": "bearer"
+    }
+
+@router.post("/token")
+def login_swagger(
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    existing_user = user_collection.find_one({
+        "email": form_data.username
+    })
+
+    if not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+
+    if not verify_password(
+        form_data.password,
+        existing_user["password_hash"],
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+
+    access_token = create_access_token(
+        data={"sub": existing_user["email"]}
+    )
+
+    refresh_token = create_refresh_token(
+        data={"sub": existing_user["email"]}
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
     }
 
 
