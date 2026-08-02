@@ -29,16 +29,34 @@ function ChatWindow({ messages, isTyping }) {
   return (
     <div className="flex-1 overflow-y-auto px-8 py-8">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
-        {messages.map((message, index) => (
+        {messages.map((message) => (
           <ChatMessage
-            key={index}
+            key={message.id}
             message={message}
           />
         ))}
 
         {isTyping && (
-          <div className="self-start rounded-xl border border-[#303030] bg-[#202020] px-5 py-3 italic text-zinc-400 animate-pulse">
-            AskLaw is thinking...
+          <div className="flex justify-start animate-fade-in">
+            <div className="rounded-3xl border border-[#303030] bg-[#202020] px-6 py-4">
+              <div className="flex items-center gap-3">
+                <span className="text-zinc-400 font-medium">
+                  ⚖️ AskLaw is thinking
+                </span>
+
+                <div className="flex gap-1">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500"></span>
+                  <span
+                    className="h-2 w-2 animate-bounce rounded-full bg-zinc-500"
+                    style={{ animationDelay: "0.15s" }}
+                  ></span>
+                  <span
+                    className="h-2 w-2 animate-bounce rounded-full bg-zinc-500"
+                    style={{ animationDelay: "0.3s" }}
+                  ></span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

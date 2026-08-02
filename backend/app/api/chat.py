@@ -1,16 +1,19 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.ai_service import stream_response
+from app.schemas.chat import ChatRequest
 from app.core.dependencies import get_current_user
 
 router = APIRouter()
 
 
-@router.post("/", response_model=ChatResponse)
-def chat(
+@router.post("/stream")
+def chat_stream(
     request: ChatRequest,
-    current_user=Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
-    return ChatResponse(
-        response=f"Hello {current_user['name']}, you asked: {request.message}"
+    return StreamingResponse(
+        stream_response(request.message),
+        media_type="text/plain",
     )

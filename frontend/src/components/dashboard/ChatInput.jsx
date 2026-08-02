@@ -1,7 +1,11 @@
 import { useRef, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 
-function ChatInput({ onSendMessage }) {
+function ChatInput({
+  onSendMessage,
+  onStopStreaming,
+  isStreaming,
+}) {
   const [message, setMessage] = useState("");
 
   const textareaRef = useRef(null);
@@ -29,7 +33,11 @@ function ChatInput({ onSendMessage }) {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !isStreaming
+    ) {
       e.preventDefault();
       handleSubmit(e);
     }
@@ -48,20 +56,33 @@ function ChatInput({ onSendMessage }) {
           placeholder="Ask a legal question..."
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          className="max-h-48 flex-1 resize-none overflow-y-auto bg-transparent text-zinc-100 placeholder:text-zinc-500 outline-none"
+          disabled={isStreaming}
+          className="min-h-[44px] max-h-48 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-zinc-100 placeholder:text-zinc-500 outline-none disabled:cursor-not-allowed disabled:opacity-70"
         />
 
-        <button
-          type="submit"
-          disabled={!message.trim()}
-          className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
-            message.trim()
-              ? "bg-zinc-100 text-black hover:bg-white"
-              : "cursor-not-allowed bg-zinc-700 text-zinc-500"
-          }`}
-        >
-          <ArrowUp size={18} />
-        </button>
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={onStopStreaming}
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-600"
+          >
+            <Square
+              size={16}
+              fill="currentColor"
+            />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!message.trim()}
+            className={`flex h-11 w-11 items-center justify-center rounded-full transition ${message.trim()
+                ? "bg-zinc-100 text-black hover:bg-white"
+                : "cursor-not-allowed bg-zinc-700 text-zinc-500"
+              }`}
+          >
+            <ArrowUp size={18} />
+          </button>
+        )}
       </form>
     </div>
   );
