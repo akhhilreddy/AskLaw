@@ -1,4 +1,13 @@
-import ollama
+from groq import Groq
+from app.core.config import Settings
+
+
+settings = Settings()
+
+client = Groq(
+    api_key=settings.GROQ_API_KEY
+)
+
 
 SYSTEM_PROMPT = """
 You are AskLaw, an AI legal assistant.
@@ -6,6 +15,7 @@ You are AskLaw, an AI legal assistant.
 Your job is to explain legal concepts in simple language.
 
 Rules:
+
 - Answer clearly and professionally.
 - Use headings and bullet points when helpful.
 - If the user asks about a country's law, answer for that country if specified.
@@ -17,7 +27,8 @@ Rules:
 
 
 def stream_response(messages):
-    ollama_messages = [
+
+    groq_messages = [
         {
             "role": "system",
             "content": SYSTEM_PROMPT,
@@ -25,18 +36,23 @@ def stream_response(messages):
     ]
 
     for message in messages:
-        ollama_messages.append(
+        groq_messages.append(
             {
                 "role": message.role,
                 "content": message.content,
             }
         )
 
-    stream = ollama.chat(
-        model="qwen3:4b",
-        messages=ollama_messages,
+    stream = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=groq_messages,
+        temperature=0.3,
+        max_completion_tokens=2048,
         stream=True,
     )
 
     for chunk in stream:
-        yield chunk["message"]["content"]
+        content = chunk.choices[0].delta.content
+
+        if content:
+            yield content

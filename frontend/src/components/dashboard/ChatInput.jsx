@@ -44,7 +44,7 @@ function ChatInput({
   };
 
   return (
-    <div className="border-t border-[#2A2A2A] bg-[#1A1A1A] px-8 py-6">
+    <div className="border-t border-[#2A2A2A] bg-[#1A1A1A] px-8 py-4">
       <form
         onSubmit={handleSubmit}
         className="mx-auto flex max-w-5xl items-end gap-4 rounded-3xl border border-[#303030] bg-[#242424] p-4"
@@ -57,7 +57,7 @@ function ChatInput({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           disabled={isStreaming}
-          className="min-h-[44px] max-h-48 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-zinc-100 placeholder:text-zinc-500 outline-none disabled:cursor-not-allowed disabled:opacity-70"
+          className="max-h-48 flex-1 resize-none overflow-y-auto bg-transparent text-zinc-100 outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed"
         />
 
         {isStreaming ? (
@@ -75,15 +75,23 @@ function ChatInput({
           <button
             type="submit"
             disabled={!message.trim()}
-            className={`flex h-11 w-11 items-center justify-center rounded-full transition ${message.trim()
+            className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
+              message.trim()
                 ? "bg-zinc-100 text-black hover:bg-white"
                 : "cursor-not-allowed bg-zinc-700 text-zinc-500"
-              }`}
+            }`}
           >
             <ArrowUp size={18} />
           </button>
         )}
       </form>
+
+      {/* Legal Disclaimer */}
+      <p className="mx-auto mt-3 max-w-4xl px-4 text-center text-[15px] leading-4 text-zinc-600">
+        AskLaw can make mistakes. Responses are for educational and
+        informational purposes only and do not constitute legal advice
+        or create an attorney-client relationship.
+      </p>
     </div>
   );
 }
