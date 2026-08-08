@@ -14,6 +14,6 @@ def chat_stream(
     current_user=Depends(get_current_user),
 ):
     return StreamingResponse(
-        stream_response(request.message),
+        stream_response(request.messages),
         media_type="text/plain",
     )

@@ -1,6 +1,5 @@
 import ollama
 
-
 SYSTEM_PROMPT = """
 You are AskLaw, an AI legal assistant.
 
@@ -17,19 +16,25 @@ Rules:
 """
 
 
-def stream_response(prompt: str):
+def stream_response(messages):
+    ollama_messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT,
+        }
+    ]
+
+    for message in messages:
+        ollama_messages.append(
+            {
+                "role": message.role,
+                "content": message.content,
+            }
+        )
+
     stream = ollama.chat(
         model="qwen3:4b",
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
+        messages=ollama_messages,
         stream=True,
     )
 

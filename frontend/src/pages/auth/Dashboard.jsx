@@ -7,14 +7,21 @@ import useChat from "../../hooks/useChat";
 function Dashboard() {
   const {
     messages,
+    conversations,
     isTyping,
     isStreaming,
     sendMessage,
     stop,
+    createConversation,
+    loadConversation,
   } = useChat();
 
   return (
-    <AppLayout>
+    <AppLayout
+      onNewChat={createConversation}
+      conversations={conversations}
+      onSelectConversation={loadConversation}
+    >
       <div className="flex h-full flex-col">
         <ChatWindow
           messages={messages}

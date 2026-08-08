@@ -11,7 +11,7 @@ export const sendMessage = async (message) => {
 };
 
 export const streamMessage = async (
-  message,
+  messages,
   onChunk
 ) => {
   const token = localStorage.getItem("token");
@@ -32,7 +32,7 @@ export const streamMessage = async (
       signal: controller.signal,
 
       body: JSON.stringify({
-        message,
+        messages,
       }),
     }
   );
@@ -42,18 +42,14 @@ export const streamMessage = async (
   }
 
   const reader = response.body.getReader();
-
   const decoder = new TextDecoder();
 
   while (true) {
-    const { done, value } =
-      await reader.read();
+    const { done, value } = await reader.read();
 
     if (done) break;
 
-    onChunk(
-      decoder.decode(value)
-    );
+    onChunk(decoder.decode(value));
   }
 };
 

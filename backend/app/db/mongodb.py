@@ -5,3 +5,4 @@ client = MongoClient("mongodb://localhost:27017")
 db = client["asklaw"]
 
 user_collection = db["users"]
+conversation_collection = db["conversations"]
