@@ -5,6 +5,7 @@ function AppLayout({
   onNewChat,
   conversations,
   onSelectConversation,
+  userName,
 }) {
   return (
     <div className="flex h-screen bg-[#1A1A1A]">
@@ -12,6 +13,7 @@ function AppLayout({
         onNewChat={onNewChat}
         conversations={conversations}
         onSelectConversation={onSelectConversation}
+        userName={userName}
       />
 
       <main className="flex-1 bg-[#1A1A1A]">

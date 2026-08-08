@@ -28,3 +28,16 @@ export const signup = async (formData) => {
   }
 };
 
+export const logout = async () => {
+  const response = await api.post("/auth/logout");
+
+  localStorage.removeItem("token");
+
+  return response.data;
+};
+
+export const getMe = async () => {
+  const response = await api.get("/auth/me");
+  return response.data;
+};
+
