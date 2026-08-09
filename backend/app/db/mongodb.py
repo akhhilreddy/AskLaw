@@ -6,3 +6,4 @@ db = client["asklaw"]
 
 user_collection = db["users"]
 conversation_collection = db["conversations"]
+document_collection = db["documents"]

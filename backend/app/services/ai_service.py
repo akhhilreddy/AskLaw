@@ -1,47 +1,132 @@
 from groq import Groq
+
 from app.core.config import Settings
 
+from app.services.rag_service import (
+    build_rag_prompt,
+)
+
+
+# =========================================================
+# SETTINGS
+# =========================================================
 
 settings = Settings()
+
+
+# =========================================================
+# GROQ CLIENT
+# =========================================================
 
 client = Groq(
     api_key=settings.GROQ_API_KEY
 )
 
 
+# =========================================================
+# FALLBACK SYSTEM PROMPT
+# =========================================================
+
 SYSTEM_PROMPT = """
 You are AskLaw, an AI legal assistant.
 
-Your job is to explain legal concepts in simple language.
+Your job is to explain legal concepts
+in simple language.
 
 Rules:
 
 - Answer clearly and professionally.
 - Use headings and bullet points when helpful.
-- If the user asks about a country's law, answer for that country if specified.
-- If no country is specified, ask which country's law they mean.
 - Never claim to be a licensed lawyer.
-- State that your responses are for educational purposes and not legal advice.
-- Keep answers concise unless the user asks for more detail.
+- Do not provide fabricated legal information.
+- Responses are for educational and
+  informational purposes only.
+- Responses do not constitute legal advice.
 """
 
 
-def stream_response(messages):
+# =========================================================
+# STREAM RESPONSE
+# =========================================================
 
-    groq_messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        }
-    ]
+def stream_response(
+    messages,
+    user_id,
+):
 
-    for message in messages:
-        groq_messages.append(
-            {
-                "role": message.role,
-                "content": message.content,
-            }
+    # -----------------------------------------------------
+    # FIND THE LATEST USER QUESTION
+    # -----------------------------------------------------
+
+    user_message = None
+
+    for message in reversed(messages):
+        if message.role == "user":
+            user_message = message.content
+            break
+
+    # -----------------------------------------------------
+    # SAFETY CHECK
+    # -----------------------------------------------------
+
+    if not user_message:
+        yield (
+            "I couldn't find a user question "
+            "to answer."
         )
+        return
+
+    # -----------------------------------------------------
+    # BUILD RAG PROMPT
+    # -----------------------------------------------------
+
+    rag_prompt, retrieved_chunks = (
+        build_rag_prompt(
+            query=user_message,
+            user_id=user_id,
+            limit=5,
+        )
+    )
+
+    # -----------------------------------------------------
+    # IF NO DOCUMENTS WERE FOUND
+    # -----------------------------------------------------
+
+    if not rag_prompt:
+        groq_messages = [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT,
+            }
+        ]
+
+        for message in messages:
+            groq_messages.append(
+                {
+                    "role": message.role,
+                    "content": message.content,
+                }
+            )
+
+    # -----------------------------------------------------
+    # USE RETRIEVED LEGAL CONTEXT
+    # -----------------------------------------------------
+
+    else:
+        groq_messages = [
+            {
+                "role": "system",
+                "content": rag_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_message,
+            },
+        ]
+
+    # -----------------------------------------------------
+    # CALL GROQ
+    # -----------------------------------------------------
 
     stream = client.chat.completions.create(
         model="openai/gpt-oss-120b",
@@ -51,8 +136,14 @@ def stream_response(messages):
         stream=True,
     )
 
+    # -----------------------------------------------------
+    # STREAM RESPONSE
+    # -----------------------------------------------------
+
     for chunk in stream:
-        content = chunk.choices[0].delta.content
+        content = (
+            chunk.choices[0].delta.content
+        )
 
         if content:
             yield content
