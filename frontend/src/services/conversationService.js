@@ -1,10 +1,18 @@
 import api from "./api";
 
+// -----------------------------------------
+// Create conversation
+// -----------------------------------------
+
 export const createConversation = async () => {
   const response = await api.post("/conversations");
 
   return response.data;
 };
+
+// -----------------------------------------
+// Get all conversations
+// -----------------------------------------
 
 export const getConversations = async () => {
   const response = await api.get("/conversations");
@@ -12,13 +20,23 @@ export const getConversations = async () => {
   return response.data;
 };
 
-export const getConversation = async (conversationId) => {
+// -----------------------------------------
+// Get single conversation
+// -----------------------------------------
+
+export const getConversation = async (
+  conversationId
+) => {
   const response = await api.get(
     `/conversations/${conversationId}`
   );
 
   return response.data;
 };
+
+// -----------------------------------------
+// Add message
+// -----------------------------------------
 
 export const addMessage = async (
   conversationId,
@@ -36,6 +54,10 @@ export const addMessage = async (
   return response.data;
 };
 
+// -----------------------------------------
+// Update automatic title
+// -----------------------------------------
+
 export const updateConversationTitle = async (
   conversationId
 ) => {
@@ -45,3 +67,39 @@ export const updateConversationTitle = async (
 
   return response.data;
 };
+
+// -----------------------------------------
+// Delete conversation
+// -----------------------------------------
+
+export const deleteConversation = async (
+  conversationId
+) => {
+  const response = await api.delete(
+    `/conversations/${conversationId}`
+  );
+
+  return response.data;
+};
+
+// -----------------------------------------
+// Rename conversation
+// -----------------------------------------
+
+export const renameConversation = async (
+  conversationId,
+  title
+) => {
+  const response = await api.patch(
+    `/conversations/${conversationId}/rename`,
+    null,
+    {
+      params: {
+        title,
+      },
+    }
+  );
+
+  return response.data;
+};
+

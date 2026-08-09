@@ -46,9 +46,9 @@ function ChatInput({
   return (
     <div className="border-t border-[#2A2A2A] bg-[#1A1A1A] px-8 py-4">
       <form
-        onSubmit={handleSubmit}
-        className="mx-auto flex max-w-5xl items-end gap-4 rounded-3xl border border-[#303030] bg-[#242424] p-4"
-      >
+  onSubmit={handleSubmit}
+  className="mx-auto flex max-w-5xl items-center gap-4 rounded-3xl border border-[#303030] bg-[#242424] px-5 py-3"
+>
         <textarea
           ref={textareaRef}
           rows={1}

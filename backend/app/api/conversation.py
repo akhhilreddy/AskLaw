@@ -1,154 +1,209 @@
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+)
 
-from app.core.dependencies import get_current_user
-
-
+from app.core.dependencies import (
+    get_current_user,
+)
 
 from app.services.conversation_service import (
     create_conversation,
     get_user_conversations,
-    add_message,
     get_conversation,
-    update_conversation_title,
-    generate_conversation_title,
+    add_message,
+    delete_conversation,
+    rename_conversation,
+    generate_title_from_first_message,
 )
-
 
 router = APIRouter()
 
 
-class AddMessageRequest(BaseModel):
-    role: str
-    content: str
-
-
-@router.get("/")
-def get_conversations(
-    current_user=Depends(get_current_user),
-):
-    conversations = get_user_conversations(
-        str(current_user["_id"])
-    )
-
-    return conversations
-
+# =========================================================
+# CREATE
+# =========================================================
 
 @router.post("/")
 def create_new_conversation(
-    current_user=Depends(get_current_user),
+    current_user=Depends(
+        get_current_user
+    ),
 ):
-    conversation = create_conversation(
-        str(current_user["_id"])
+    return create_conversation(
+        user_id=str(
+            current_user["_id"]
+        )
     )
 
-    return {
-        "id": str(conversation["_id"]),
-        "title": conversation["title"],
-        "messages": conversation["messages"],
-        "created_at": conversation["created_at"],
-        "updated_at": conversation["updated_at"],
-    }
 
+# =========================================================
+# GET ALL USER CONVERSATIONS
+# =========================================================
 
-@router.post("/{conversation_id}/messages")
-def add_conversation_message(
-    conversation_id: str,
-    request: AddMessageRequest,
-    current_user=Depends(get_current_user),
+@router.get("/")
+def get_conversations(
+    current_user=Depends(
+        get_current_user
+    ),
 ):
-    success = add_message(
-        conversation_id=conversation_id,
-        user_id=str(current_user["_id"]),
-        role=request.role,
-        content=request.content,
+    return get_user_conversations(
+        user_id=str(
+            current_user["_id"]
+        )
     )
 
-    if not success:
-        return {
-            "success": False,
-            "message": "Conversation not found",
-        }
 
-    return {
-        "success": True,
-    }
+# =========================================================
+# GET SINGLE CONVERSATION
+# =========================================================
 
 @router.get("/{conversation_id}")
 def get_single_conversation(
     conversation_id: str,
-    current_user=Depends(get_current_user),
+    current_user=Depends(
+        get_current_user
+    ),
 ):
     conversation = get_conversation(
         conversation_id=conversation_id,
-        user_id=str(current_user["_id"]),
+        user_id=str(
+            current_user["_id"]
+        ),
     )
 
     if not conversation:
-        return {
-            "success": False,
-            "message": "Conversation not found",
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found",
+        )
+
+    return conversation
+
+
+# =========================================================
+# ADD MESSAGE
+# =========================================================
+
+@router.post("/{conversation_id}/messages")
+def create_message(
+    conversation_id: str,
+    message: dict,
+    current_user=Depends(
+        get_current_user
+    ),
+):
+    role = message.get("role")
+    content = message.get("content")
+
+    if not role or not content:
+        raise HTTPException(
+            status_code=400,
+            detail="Role and content are required",
+        )
+
+    saved_message = add_message(
+        conversation_id=conversation_id,
+        user_id=str(
+            current_user["_id"]
+        ),
+        role=role,
+        content=content,
+    )
+
+    if not saved_message:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found",
+        )
+
+    return saved_message
+
+
+# =========================================================
+# DELETE
+# =========================================================
+
+@router.delete("/{conversation_id}")
+def delete_single_conversation(
+    conversation_id: str,
+    current_user=Depends(
+        get_current_user
+    ),
+):
+    deleted = delete_conversation(
+        conversation_id=conversation_id,
+        user_id=str(
+            current_user["_id"]
+        ),
+    )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found",
+        )
 
     return {
-        "id": str(conversation["_id"]),
-        "title": conversation["title"],
-        "messages": conversation["messages"],
-        "created_at": conversation["created_at"],
-        "updated_at": conversation["updated_at"],
+        "message": "Conversation deleted successfully"
     }
-
+# =========================================================
+# AUTOMATIC TITLE
+# =========================================================
 
 @router.patch("/{conversation_id}/title")
-def update_title(
+def generate_conversation_title(
     conversation_id: str,
-    current_user=Depends(get_current_user),
+    current_user=Depends(
+        get_current_user
+    ),
 ):
-    conversation = get_conversation(
+    title = generate_title_from_first_message(
         conversation_id=conversation_id,
-        user_id=str(current_user["_id"]),
-    )
-
-    if not conversation:
-        return {
-            "success": False,
-            "message": "Conversation not found",
-        }
-
-    if conversation.get("title") != "New Chat":
-        return {
-            "success": True,
-            "title": conversation.get("title"),
-        }
-
-    messages = conversation.get("messages", [])
-
-    if not messages:
-        return {
-            "success": True,
-            "title": "New Chat",
-        }
-
-    first_user_message = next(
-        (
-            message["content"]
-            for message in messages
-            if message.get("role") == "user"
+        user_id=str(
+            current_user["_id"]
         ),
-        "",
     )
 
-    title = generate_conversation_title(
-        first_user_message
-    )
+    if title is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or has no messages",
+        )
 
-    update_conversation_title(
+    return {
+        "message": "Conversation title generated successfully",
+        "title": title,
+    }
+
+# =========================================================
+# RENAME
+# =========================================================
+
+@router.patch("/{conversation_id}/rename")
+def rename_single_conversation(
+    conversation_id: str,
+    title: str,
+    current_user=Depends(
+        get_current_user
+    ),
+):
+    renamed_title = rename_conversation(
         conversation_id=conversation_id,
-        user_id=str(current_user["_id"]),
+        user_id=str(
+            current_user["_id"]
+        ),
         title=title,
     )
 
+    if renamed_title is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found",
+        )
+
     return {
-        "success": True,
-        "title": title,
+        "message": "Conversation renamed successfully",
+        "title": renamed_title,
     }

@@ -11,24 +11,36 @@ import {
   getConversation,
   getConversations,
   updateConversationTitle,
+  deleteConversation as deleteConversationApi,
+  renameConversation as renameConversationApi,
 } from "../services/conversationService";
 
 export default function useChat() {
-  const [conversation, setConversation] = useState({
-    id: null,
-    title: "New Chat",
-    messages: [],
-  });
+  const [conversation, setConversation] =
+    useState({
+      id: null,
+      title: "New Chat",
+      messages: [],
+    });
 
-  const [conversations, setConversations] = useState([]);
+  const [conversations, setConversations] =
+    useState([]);
 
-  const [isTyping, setIsTyping] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isTyping, setIsTyping] =
+    useState(false);
 
-  // Load all conversations for the logged-in user
+  const [isStreaming, setIsStreaming] =
+    useState(false);
+
+
+  // =====================================================
+  // LOAD CONVERSATIONS
+  // =====================================================
+
   const loadConversations = async () => {
     try {
-      const data = await getConversations();
+      const data =
+        await getConversations();
 
       setConversations(data);
     } catch (error) {
@@ -39,31 +51,53 @@ export default function useChat() {
     }
   };
 
-  // Load conversations when AskLaw opens
+
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
   useEffect(() => {
     loadConversations();
   }, []);
 
-  const sendMessage = async (message) => {
-    let conversationId = conversation.id;
+
+  // =====================================================
+  // SEND MESSAGE
+  // =====================================================
+
+  const sendMessage = async (
+    message
+  ) => {
+    let conversationId =
+      conversation.id;
 
     try {
-      // Create a MongoDB conversation if one doesn't exist yet
+      // -----------------------------------------------
+      // Create conversation if needed
+      // -----------------------------------------------
+
       if (!conversationId) {
         const newConversation =
           await createConversationApi();
 
-        conversationId = newConversation.id;
+        conversationId =
+          newConversation.id;
 
         setConversation((prev) => ({
           ...prev,
           id: newConversation.id,
-          title: newConversation.title,
+          title:
+            newConversation.title ||
+            "New Chat",
         }));
 
-        // Refresh the conversation list
         await loadConversations();
       }
+
+
+      // -----------------------------------------------
+      // User message
+      // -----------------------------------------------
 
       const userMessage = {
         id: crypto.randomUUID(),
@@ -71,22 +105,35 @@ export default function useChat() {
         content: message,
       };
 
-      // Build AI context.
-      // Only the latest 12 messages are sent to Ollama.
+
+      // -----------------------------------------------
+      // Conversation context
+      // -----------------------------------------------
+
       const conversationContext = [
         ...conversation.messages
           .slice(-12)
-          .map(({ role, content }) => ({
-            role,
-            content,
-          })),
+          .map(
+            ({
+              role,
+              content,
+            }) => ({
+              role,
+              content,
+            })
+          ),
+
         {
           role: "user",
           content: message,
         },
       ];
 
-      // Show user's message immediately
+
+      // -----------------------------------------------
+      // Update UI
+      // -----------------------------------------------
+
       setConversation((prev) => ({
         ...prev,
         messages: [
@@ -95,92 +142,147 @@ export default function useChat() {
         ],
       }));
 
-      // Save user message to MongoDB
+
+      // -----------------------------------------------
+      // Save user message
+      // -----------------------------------------------
+
       await addMessage(
         conversationId,
         "user",
         message
       );
 
-      if (conversation.messages.length === 0) {
+
+      // -----------------------------------------------
+      // Automatic title
+      // -----------------------------------------------
+
+      if (
+        conversation.messages
+          .length === 0
+      ) {
         const titleResponse =
-          await updateConversationTitle(conversationId);
+          await updateConversationTitle(
+            conversationId
+          );
 
         if (titleResponse?.title) {
-          setConversation((prev) => ({
-            ...prev,
-            title: titleResponse.title,
-          }));
+          setConversation(
+            (prev) => ({
+              ...prev,
+              title:
+                titleResponse.title,
+            })
+          );
         }
 
         await loadConversations();
       }
 
+
+      // -----------------------------------------------
+      // Start streaming
+      // -----------------------------------------------
+
       setIsTyping(true);
       setIsStreaming(true);
 
-      let assistantCreated = false;
-      const assistantId = crypto.randomUUID();
+      let assistantCreated =
+        false;
+
+      const assistantId =
+        crypto.randomUUID();
+
       let assistantResponse = "";
 
-      // Stream AI response
+
+      // -----------------------------------------------
+      // Stream response
+      // -----------------------------------------------
+
       await streamMessage(
         conversationContext,
         (chunk) => {
-          assistantResponse += chunk;
+          assistantResponse +=
+            chunk;
 
-          // First chunk received
-          if (!assistantCreated) {
-            assistantCreated = true;
+          if (
+            !assistantCreated
+          ) {
+            assistantCreated =
+              true;
 
-            // Remove "AskLaw is thinking..."
             setIsTyping(false);
 
-            setConversation((prev) => ({
-              ...prev,
-              messages: [
-                ...prev.messages,
-                {
-                  id: assistantId,
-                  role: "assistant",
-                  content: assistantResponse,
-                  isComplete: false,
-                },
-              ],
-            }));
+            setConversation(
+              (prev) => ({
+                ...prev,
+
+                messages: [
+                  ...prev.messages,
+
+                  {
+                    id: assistantId,
+                    role: "assistant",
+                    content:
+                      assistantResponse,
+                    isComplete: false,
+                  },
+                ],
+              })
+            );
 
             return;
           }
 
-          // Update assistant message while streaming
-          setConversation((prev) => ({
-            ...prev,
-            messages: prev.messages.map((msg) =>
-              msg.id === assistantId
-                ? {
-                  ...msg,
-                  content: assistantResponse,
-                }
-                : msg
-            ),
-          }));
+
+          setConversation(
+            (prev) => ({
+              ...prev,
+
+              messages:
+                prev.messages.map(
+                  (msg) =>
+                    msg.id ===
+                    assistantId
+                      ? {
+                          ...msg,
+                          content:
+                            assistantResponse,
+                        }
+                      : msg
+                ),
+            })
+          );
         }
       );
 
-      // Mark assistant response as complete
+
+      // -----------------------------------------------
+      // Mark complete
+      // -----------------------------------------------
+
       setConversation((prev) => ({
         ...prev,
-        messages: prev.messages.map((msg) =>
-          msg.id === assistantId
-            ? {
-              ...msg,
-              isComplete: true,
-            }
-            : msg
-        ),
+
+        messages:
+          prev.messages.map(
+            (msg) =>
+              msg.id === assistantId
+                ? {
+                    ...msg,
+                    isComplete: true,
+                  }
+                : msg
+          ),
       }));
 
-      // Save completed AI response to MongoDB
+
+      // -----------------------------------------------
+      // Save assistant response
+      // -----------------------------------------------
+
       if (assistantResponse) {
         await addMessage(
           conversationId,
@@ -189,30 +291,47 @@ export default function useChat() {
         );
       }
 
-      // Refresh sidebar conversation list
       await loadConversations();
-    } catch (error) {
-      if (error.name !== "AbortError") {
-        console.error(error);
 
-        setConversation((prev) => ({
-          ...prev,
-          messages: [
-            ...prev.messages,
-            {
-              id: crypto.randomUUID(),
-              role: "assistant",
-              content: "Sorry, something went wrong.",
-              isComplete: true,
-            },
-          ],
-        }));
+    } catch (error) {
+      if (
+        error.name !==
+        "AbortError"
+      ) {
+        console.error(
+          "Failed to send message:",
+          error
+        );
+
+        setConversation(
+          (prev) => ({
+            ...prev,
+
+            messages: [
+              ...prev.messages,
+
+              {
+                id:
+                  crypto.randomUUID(),
+                role: "assistant",
+                content:
+                  "Sorry, something went wrong.",
+                isComplete: true,
+              },
+            ],
+          })
+        );
       }
     } finally {
       setIsTyping(false);
       setIsStreaming(false);
     }
   };
+
+
+  // =====================================================
+  // STOP
+  // =====================================================
 
   const stop = () => {
     stopStreaming();
@@ -221,35 +340,50 @@ export default function useChat() {
     setIsStreaming(false);
   };
 
-  // Create a brand-new conversation
-  const createConversation = async () => {
-    stopStreaming();
 
-    setIsTyping(false);
-    setIsStreaming(false);
+  // =====================================================
+  // NEW CONVERSATION
+  // =====================================================
 
-    try {
-      const newConversation =
-        await createConversationApi();
+  const createConversation =
+    async () => {
+      stopStreaming();
 
-      setConversation({
-        id: newConversation.id,
-        title: newConversation.title,
-        messages: newConversation.messages,
-      });
+      setIsTyping(false);
+      setIsStreaming(false);
 
-      // Refresh sidebar list
-      await loadConversations();
-    } catch (error) {
-      console.error(
-        "Failed to create conversation:",
-        error
-      );
-    }
-  };
+      try {
+        const newConversation =
+          await createConversationApi();
 
-  // Load one existing conversation
-  const loadConversation = async (conversationId) => {
+        setConversation({
+          id: newConversation.id,
+          title:
+            newConversation.title ||
+            "New Chat",
+          messages:
+            newConversation.messages ||
+            [],
+        });
+
+        await loadConversations();
+
+      } catch (error) {
+        console.error(
+          "Failed to create conversation:",
+          error
+        );
+      }
+    };
+
+
+  // =====================================================
+  // LOAD CONVERSATION
+  // =====================================================
+
+  const loadConversation = async (
+    conversationId
+  ) => {
     stopStreaming();
 
     setIsTyping(false);
@@ -257,29 +391,46 @@ export default function useChat() {
 
     try {
       const loadedConversation =
-        await getConversation(conversationId);
+        await getConversation(
+          conversationId
+        );
 
-      if (!loadedConversation?.id) {
-        console.error("Conversation not found");
+      if (
+        !loadedConversation?.id
+      ) {
+        console.error(
+          "Conversation not found"
+        );
+
         return;
       }
 
       const loadedMessages =
-        loadedConversation.messages.map(
-          (message) => ({
-            ...message,
-            id:
-              message.id ||
-              crypto.randomUUID(),
-            isComplete: true,
-          })
-        );
+        (
+          loadedConversation.messages ||
+          []
+        ).map((message) => ({
+          ...message,
+
+          id:
+            message.id ||
+            crypto.randomUUID(),
+
+          isComplete: true,
+        }));
 
       setConversation({
-        id: loadedConversation.id,
-        title: loadedConversation.title,
-        messages: loadedMessages,
+        id:
+          loadedConversation.id,
+
+        title:
+          loadedConversation.title ||
+          "New Chat",
+
+        messages:
+          loadedMessages,
       });
+
     } catch (error) {
       console.error(
         "Failed to load conversation:",
@@ -288,17 +439,138 @@ export default function useChat() {
     }
   };
 
+
+  // =====================================================
+  // DELETE
+  // =====================================================
+
+  const deleteConversation =
+    async (conversationId) => {
+      try {
+        await deleteConversationApi(
+          conversationId
+        );
+
+        setConversations(
+          (prev) =>
+            prev.filter(
+              (item) =>
+                item.id !==
+                conversationId
+            )
+        );
+
+        if (
+          conversation.id ===
+          conversationId
+        ) {
+          stopStreaming();
+
+          setIsTyping(false);
+          setIsStreaming(false);
+
+          setConversation({
+            id: null,
+            title: "New Chat",
+            messages: [],
+          });
+        }
+
+      } catch (error) {
+        console.error(
+          "Failed to delete conversation:",
+          error
+        );
+
+        throw error;
+      }
+    };
+
+
+  // =====================================================
+  // RENAME
+  // =====================================================
+
+  const renameConversation =
+    async (
+      conversationId,
+      title
+    ) => {
+      try {
+        const result =
+          await renameConversationApi(
+            conversationId,
+            title
+          );
+
+        const newTitle =
+          result?.title ||
+          title.trim();
+
+
+        // Update sidebar
+        setConversations(
+          (prev) =>
+            prev.map(
+              (item) =>
+                item.id ===
+                conversationId
+                  ? {
+                      ...item,
+                      title:
+                        newTitle,
+                    }
+                  : item
+            )
+        );
+
+
+        // Update active conversation
+        setConversation(
+          (prev) =>
+            prev.id ===
+            conversationId
+              ? {
+                  ...prev,
+                  title:
+                    newTitle,
+                }
+              : prev
+        );
+
+      } catch (error) {
+        console.error(
+          "Failed to rename conversation:",
+          error.response
+            ?.data || error
+        );
+
+        throw error;
+      }
+    };
+
+
+  // =====================================================
+  // RETURN
+  // =====================================================
+
   return {
     conversation,
     conversations,
-    messages: conversation.messages,
+
+    messages:
+      conversation.messages,
 
     isTyping,
     isStreaming,
 
     sendMessage,
     stop,
+
     createConversation,
     loadConversation,
+
+    deleteConversation,
+    renameConversation,
   };
 }

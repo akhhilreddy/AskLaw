@@ -5,6 +5,8 @@ function AppLayout({
   onNewChat,
   conversations,
   onSelectConversation,
+  onDeleteConversation,
+  onRenameConversation,
   userName,
 }) {
   return (
@@ -13,6 +15,8 @@ function AppLayout({
         onNewChat={onNewChat}
         conversations={conversations}
         onSelectConversation={onSelectConversation}
+        onDeleteConversation={onDeleteConversation}
+        onRenameConversation={onRenameConversation}
         userName={userName}
       />
 

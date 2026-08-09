@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
 import AppLayout from "../../layout/AppLayout";
+
 import ChatWindow from "../../components/dashboard/ChatWindow";
 import ChatInput from "../../components/dashboard/ChatInput";
 
 import useChat from "../../hooks/useChat";
+
 import { getMe } from "../../services/authService";
 
 const welcomeMessages = [
@@ -19,16 +21,29 @@ function Dashboard() {
   const {
     messages,
     conversations,
+
     isTyping,
     isStreaming,
+
     sendMessage,
     stop,
+
     createConversation,
     loadConversation,
+
+    deleteConversation,
+    renameConversation,
   } = useChat();
 
-  const [userName, setUserName] = useState("there");
-  const [welcomeIndex, setWelcomeIndex] = useState(0);
+  const [userName, setUserName] =
+    useState("there");
+
+  const [welcomeIndex, setWelcomeIndex] =
+    useState(0);
+
+  // -----------------------------------------
+  // Load logged-in user
+  // -----------------------------------------
 
   useEffect(() => {
     const loadUser = async () => {
@@ -39,30 +54,48 @@ function Dashboard() {
           setUserName(user.name);
         }
       } catch (error) {
-        console.error("Failed to load user:", error);
+        console.error(
+          "Failed to load user:",
+          error
+        );
       }
     };
 
     loadUser();
   }, []);
 
+  // -----------------------------------------
+  // Rotate welcome message
+  // -----------------------------------------
+
   useEffect(() => {
     const interval = setInterval(() => {
-      setWelcomeIndex((prev) =>
-        (prev + 1) % welcomeMessages.length
+      setWelcomeIndex(
+        (prev) =>
+          (prev + 1) %
+          welcomeMessages.length
       );
     }, 5000);
 
     return () => clearInterval(interval);
   }, []);
 
-  const hasMessages = messages.length > 0;
+  const hasMessages =
+    messages.length > 0;
 
   return (
     <AppLayout
       onNewChat={createConversation}
       conversations={conversations}
-      onSelectConversation={loadConversation}
+      onSelectConversation={
+        loadConversation
+      }
+      onDeleteConversation={
+        deleteConversation
+      }
+      onRenameConversation={
+        renameConversation
+      }
       userName={userName}
     >
       <div className="flex h-full flex-col">
@@ -73,12 +106,12 @@ function Dashboard() {
           />
         ) : (
           <div className="flex flex-1 items-center justify-center px-6 pb-20">
-            <div className="max-w-2xl text-center">
-              <p className="mb-3 text-sm font-medium uppercase tracking-[0.25em] text-zinc-500">
+            <div className="w-full max-w-3xl text-center">
+              <p className="mb-5 text-[11px] font-medium uppercase tracking-[0.35em] text-zinc-600">
                 AskLaw
               </p>
 
-              <h1 className="text-5xl font-semibold tracking-tight text-zinc-100 md:text-6xl">
+              <h1 className="font-serif text-6xl font-normal leading-tight tracking-[-0.03em] text-zinc-100 md:text-7xl">
                 Hello,{" "}
                 <span className="text-zinc-400">
                   {userName}
@@ -87,15 +120,21 @@ function Dashboard() {
 
               <p
                 key={welcomeIndex}
-                className="mt-5 text-xl font-light tracking-wide text-zinc-400 transition-all duration-500 md:text-2xl"
+                className="mt-6 text-2xl font-light leading-relaxed tracking-[-0.01em] text-zinc-400 transition-opacity duration-700 md:text-3xl"
               >
-                {welcomeMessages[welcomeIndex]}
+                {
+                  welcomeMessages[
+                    welcomeIndex
+                  ]
+                }
               </p>
 
-              <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-zinc-600">
-                Ask about contracts, employment, property,
-                rights, or any other legal concept you want
-                explained in simple language.
+              <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-zinc-600">
+                Ask about contracts,
+                employment, property,
+                rights, or any legal
+                concept you want explained
+                in simple language.
               </p>
             </div>
           </div>
