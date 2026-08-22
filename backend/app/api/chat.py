@@ -19,6 +19,7 @@ from app.core.dependencies import (
     get_current_user,
 )
 
+
 router = APIRouter()
 
 
@@ -33,14 +34,22 @@ def chat_stream(
         get_current_user
     ),
 ):
+    # -----------------------------------------------------
+    # GET CURRENT USER ID
+    # -----------------------------------------------------
+
     user_id = str(
         current_user["_id"]
     )
+
+    # -----------------------------------------------------
+    # STREAM RESPONSE
+    # -----------------------------------------------------
 
     return StreamingResponse(
         stream_response(
             request.messages,
             user_id,
         ),
-        media_type="text/plain",
+        media_type="application/x-ndjson",
     )

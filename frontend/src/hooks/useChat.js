@@ -15,7 +15,9 @@ import {
   renameConversation as renameConversationApi,
 } from "../services/conversationService";
 
+
 export default function useChat() {
+
   const [conversation, setConversation] =
     useState({
       id: null,
@@ -38,17 +40,23 @@ export default function useChat() {
   // =====================================================
 
   const loadConversations = async () => {
+
     try {
+
       const data =
         await getConversations();
 
       setConversations(data);
+
     } catch (error) {
+
       console.error(
         "Failed to load conversations:",
         error
       );
+
     }
+
   };
 
 
@@ -57,7 +65,9 @@ export default function useChat() {
   // =====================================================
 
   useEffect(() => {
+
     loadConversations();
+
   }, []);
 
 
@@ -68,15 +78,18 @@ export default function useChat() {
   const sendMessage = async (
     message
   ) => {
+
     let conversationId =
       conversation.id;
 
     try {
+
       // -----------------------------------------------
       // Create conversation if needed
       // -----------------------------------------------
 
       if (!conversationId) {
+
         const newConversation =
           await createConversationApi();
 
@@ -92,6 +105,7 @@ export default function useChat() {
         }));
 
         await loadConversations();
+
       }
 
 
@@ -111,6 +125,7 @@ export default function useChat() {
       // -----------------------------------------------
 
       const conversationContext = [
+
         ...conversation.messages
           .slice(-12)
           .map(
@@ -127,6 +142,7 @@ export default function useChat() {
           role: "user",
           content: message,
         },
+
       ];
 
 
@@ -136,10 +152,12 @@ export default function useChat() {
 
       setConversation((prev) => ({
         ...prev,
+
         messages: [
           ...prev.messages,
           userMessage,
         ],
+
       }));
 
 
@@ -162,22 +180,28 @@ export default function useChat() {
         conversation.messages
           .length === 0
       ) {
+
         const titleResponse =
           await updateConversationTitle(
             conversationId
           );
 
         if (titleResponse?.title) {
+
           setConversation(
             (prev) => ({
               ...prev,
+
               title:
                 titleResponse.title,
+
             })
           );
+
         }
 
         await loadConversations();
+
       }
 
 
@@ -186,7 +210,13 @@ export default function useChat() {
       // -----------------------------------------------
 
       setIsTyping(true);
+
       setIsStreaming(true);
+
+
+      // -----------------------------------------------
+      // Assistant message state
+      // -----------------------------------------------
 
       let assistantCreated =
         false;
@@ -194,68 +224,155 @@ export default function useChat() {
       const assistantId =
         crypto.randomUUID();
 
-      let assistantResponse = "";
+      let assistantResponse =
+        "";
+
+      let assistantSources =
+        [];
 
 
       // -----------------------------------------------
-      // Stream response
+      // CREATE ASSISTANT MESSAGE
+      // -----------------------------------------------
+
+      const createAssistantMessage = () => {
+
+        if (assistantCreated) {
+
+          return;
+
+        }
+
+        assistantCreated =
+          true;
+
+        setIsTyping(false);
+
+        setConversation(
+          (prev) => ({
+            ...prev,
+
+            messages: [
+              ...prev.messages,
+
+              {
+                id: assistantId,
+                role: "assistant",
+                content:
+                  assistantResponse,
+                sources:
+                  assistantSources,
+                isComplete: false,
+              },
+
+            ],
+
+          })
+        );
+
+      };
+
+
+      // -----------------------------------------------
+      // UPDATE ASSISTANT MESSAGE
+      // -----------------------------------------------
+
+      const updateAssistantMessage = () => {
+
+        setConversation(
+          (prev) => ({
+            ...prev,
+
+            messages:
+              prev.messages.map(
+                (msg) =>
+                  msg.id === assistantId
+                    ? {
+                        ...msg,
+
+                        content:
+                          assistantResponse,
+
+                        sources:
+                          assistantSources,
+                      }
+                    : msg
+              ),
+
+          })
+        );
+
+      };
+
+
+      // -----------------------------------------------
+      // STREAM RESPONSE
       // -----------------------------------------------
 
       await streamMessage(
         conversationContext,
-        (chunk) => {
-          assistantResponse +=
-            chunk;
+
+        (event) => {
+
+          // -------------------------------------------
+          // TOKEN EVENT
+          // -------------------------------------------
 
           if (
-            !assistantCreated
+            event.type === "token"
           ) {
-            assistantCreated =
-              true;
 
-            setIsTyping(false);
+            assistantResponse +=
+              event.content;
 
-            setConversation(
-              (prev) => ({
-                ...prev,
+            createAssistantMessage();
 
-                messages: [
-                  ...prev.messages,
-
-                  {
-                    id: assistantId,
-                    role: "assistant",
-                    content:
-                      assistantResponse,
-                    isComplete: false,
-                  },
-                ],
-              })
-            );
+            updateAssistantMessage();
 
             return;
+
           }
 
 
-          setConversation(
-            (prev) => ({
-              ...prev,
+          // -------------------------------------------
+          // SOURCES EVENT
+          // -------------------------------------------
 
-              messages:
-                prev.messages.map(
-                  (msg) =>
-                    msg.id ===
-                    assistantId
-                      ? {
-                          ...msg,
-                          content:
-                            assistantResponse,
-                        }
-                      : msg
-                ),
-            })
-          );
+          if (
+            event.type === "sources"
+          ) {
+
+            assistantSources =
+              event.sources || [];
+
+            createAssistantMessage();
+
+            updateAssistantMessage();
+
+            return;
+
+          }
+
+
+          // -------------------------------------------
+          // ERROR EVENT
+          // -------------------------------------------
+
+          if (
+            event.type === "error"
+          ) {
+
+            assistantResponse +=
+              event.content;
+
+            createAssistantMessage();
+
+            updateAssistantMessage();
+
+          }
+
         }
+
       );
 
 
@@ -263,20 +380,28 @@ export default function useChat() {
       // Mark complete
       // -----------------------------------------------
 
-      setConversation((prev) => ({
-        ...prev,
+      if (assistantCreated) {
 
-        messages:
-          prev.messages.map(
-            (msg) =>
-              msg.id === assistantId
-                ? {
-                    ...msg,
-                    isComplete: true,
-                  }
-                : msg
-          ),
-      }));
+        setConversation(
+          (prev) => ({
+            ...prev,
+
+            messages:
+              prev.messages.map(
+                (msg) =>
+                  msg.id === assistantId
+                    ? {
+                        ...msg,
+
+                        isComplete: true,
+                      }
+                    : msg
+              ),
+
+          })
+        );
+
+      }
 
 
       // -----------------------------------------------
@@ -284,20 +409,26 @@ export default function useChat() {
       // -----------------------------------------------
 
       if (assistantResponse) {
+
         await addMessage(
           conversationId,
           "assistant",
           assistantResponse
         );
+
       }
+
 
       await loadConversations();
 
+
     } catch (error) {
+
       if (
         error.name !==
         "AbortError"
       ) {
+
         console.error(
           "Failed to send message:",
           error
@@ -313,19 +444,32 @@ export default function useChat() {
               {
                 id:
                   crypto.randomUUID(),
+
                 role: "assistant",
+
                 content:
                   "Sorry, something went wrong.",
+
+                sources: [],
+
                 isComplete: true,
               },
+
             ],
+
           })
         );
+
       }
+
     } finally {
+
       setIsTyping(false);
+
       setIsStreaming(false);
+
     }
+
   };
 
 
@@ -334,10 +478,13 @@ export default function useChat() {
   // =====================================================
 
   const stop = () => {
+
     stopStreaming();
 
     setIsTyping(false);
+
     setIsStreaming(false);
+
   };
 
 
@@ -347,20 +494,25 @@ export default function useChat() {
 
   const createConversation =
     async () => {
+
       stopStreaming();
 
       setIsTyping(false);
+
       setIsStreaming(false);
 
       try {
+
         const newConversation =
           await createConversationApi();
 
         setConversation({
           id: newConversation.id,
+
           title:
             newConversation.title ||
             "New Chat",
+
           messages:
             newConversation.messages ||
             [],
@@ -369,11 +521,14 @@ export default function useChat() {
         await loadConversations();
 
       } catch (error) {
+
         console.error(
           "Failed to create conversation:",
           error
         );
+
       }
+
     };
 
 
@@ -384,12 +539,15 @@ export default function useChat() {
   const loadConversation = async (
     conversationId
   ) => {
+
     stopStreaming();
 
     setIsTyping(false);
+
     setIsStreaming(false);
 
     try {
+
       const loadedConversation =
         await getConversation(
           conversationId
@@ -398,11 +556,13 @@ export default function useChat() {
       if (
         !loadedConversation?.id
       ) {
+
         console.error(
           "Conversation not found"
         );
 
         return;
+
       }
 
       const loadedMessages =
@@ -416,10 +576,14 @@ export default function useChat() {
             message.id ||
             crypto.randomUUID(),
 
+          sources:
+            message.sources || [],
+
           isComplete: true,
         }));
 
       setConversation({
+
         id:
           loadedConversation.id,
 
@@ -429,14 +593,18 @@ export default function useChat() {
 
         messages:
           loadedMessages,
+
       });
 
     } catch (error) {
+
       console.error(
         "Failed to load conversation:",
         error
       );
+
     }
+
   };
 
 
@@ -446,7 +614,9 @@ export default function useChat() {
 
   const deleteConversation =
     async (conversationId) => {
+
       try {
+
         await deleteConversationApi(
           conversationId
         );
@@ -464,9 +634,11 @@ export default function useChat() {
           conversation.id ===
           conversationId
         ) {
+
           stopStreaming();
 
           setIsTyping(false);
+
           setIsStreaming(false);
 
           setConversation({
@@ -474,16 +646,20 @@ export default function useChat() {
             title: "New Chat",
             messages: [],
           });
+
         }
 
       } catch (error) {
+
         console.error(
           "Failed to delete conversation:",
           error
         );
 
         throw error;
+
       }
+
     };
 
 
@@ -496,7 +672,9 @@ export default function useChat() {
       conversationId,
       title
     ) => {
+
       try {
+
         const result =
           await renameConversationApi(
             conversationId,
@@ -509,6 +687,7 @@ export default function useChat() {
 
 
         // Update sidebar
+
         setConversations(
           (prev) =>
             prev.map(
@@ -517,6 +696,7 @@ export default function useChat() {
                 conversationId
                   ? {
                       ...item,
+
                       title:
                         newTitle,
                     }
@@ -526,12 +706,14 @@ export default function useChat() {
 
 
         // Update active conversation
+
         setConversation(
           (prev) =>
             prev.id ===
             conversationId
               ? {
                   ...prev,
+
                   title:
                     newTitle,
                 }
@@ -539,6 +721,7 @@ export default function useChat() {
         );
 
       } catch (error) {
+
         console.error(
           "Failed to rename conversation:",
           error.response
@@ -546,7 +729,9 @@ export default function useChat() {
         );
 
         throw error;
+
       }
+
     };
 
 
@@ -555,22 +740,30 @@ export default function useChat() {
   // =====================================================
 
   return {
+
     conversation,
+
     conversations,
 
     messages:
       conversation.messages,
 
     isTyping,
+
     isStreaming,
 
     sendMessage,
+
     stop,
 
     createConversation,
+
     loadConversation,
 
     deleteConversation,
+
     renameConversation,
+
   };
+
 }

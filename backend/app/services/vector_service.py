@@ -1,24 +1,44 @@
 from qdrant_client import QdrantClient
+
 from qdrant_client.models import (
     Distance,
     VectorParams,
     PointStruct,
+    Filter,
+    FieldCondition,
+    MatchValue,
 )
 
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import (
+    SentenceTransformer,
+)
 
 
 # =========================================================
 # CONFIG
 # =========================================================
 
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = (
+    "http://localhost:6333"
+)
 
-COLLECTION_NAME = "asklaw_documents"
+COLLECTION_NAME = (
+    "asklaw_documents"
+)
 
 EMBEDDING_MODEL = (
     "sentence-transformers/all-MiniLM-L6-v2"
 )
+
+
+# =========================================================
+# RETRIEVAL SETTINGS
+# =========================================================
+
+# Minimum similarity score required
+# for a chunk to be considered relevant.
+
+MIN_SCORE = 0.35
 
 
 # =========================================================
@@ -44,13 +64,15 @@ embedding_model = SentenceTransformer(
 # =========================================================
 
 def create_collection():
+
     existing_collections = (
         qdrant_client.get_collections()
     )
 
     collection_names = [
         collection.name
-        for collection in existing_collections.collections
+        for collection in
+        existing_collections.collections
     ]
 
     if COLLECTION_NAME in collection_names:
@@ -74,9 +96,14 @@ def create_collection():
 # CREATE EMBEDDING
 # =========================================================
 
-def create_embedding(text: str):
-    embedding = embedding_model.encode(
-        text
+def create_embedding(
+    text: str,
+):
+
+    embedding = (
+        embedding_model.encode(
+            text
+        )
     )
 
     return embedding.tolist()
@@ -95,7 +122,10 @@ def store_chunk(
     chunk_index,
     page_number,
 ):
-    vector = create_embedding(text)
+
+    vector = create_embedding(
+        text
+    )
 
     point = PointStruct(
         id=chunk_id,
@@ -114,6 +144,8 @@ def store_chunk(
         collection_name=COLLECTION_NAME,
         points=[point],
     )
+
+
 # =========================================================
 # SEARCH SIMILAR CHUNKS
 # =========================================================
@@ -121,29 +153,105 @@ def store_chunk(
 def search_similar_chunks(
     query: str,
     user_id: str,
-    limit: int = 3,
+    limit: int = 5,
 ):
-    # Convert the user's question into an embedding
-    query_vector = create_embedding(
-        query
+
+    # -----------------------------------------------------
+    # CREATE QUERY EMBEDDING
+    # -----------------------------------------------------
+
+    query_vector = (
+        create_embedding(
+            query
+        )
     )
 
-    # Search Qdrant for the closest vectors
-    results = qdrant_client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        query_filter={
-            "must": [
-                {
-                    "key": "user_id",
-                    "match": {
-                        "value": user_id,
-                    },
-                }
-            ]
-        },
-        limit=limit,
-        with_payload=True,
+
+    # -----------------------------------------------------
+    # BUILD USER FILTER
+    #
+    # Users should only retrieve chunks
+    # belonging to their own documents.
+    # -----------------------------------------------------
+
+    query_filter = Filter(
+        must=[
+            FieldCondition(
+                key="user_id",
+                match=MatchValue(
+                    value=user_id
+                ),
+            )
+        ]
     )
 
-    return results.points
+
+    # -----------------------------------------------------
+    # SEARCH MORE RESULTS THAN WE NEED
+    #
+    # Example:
+    # If we ultimately need 5 chunks,
+    # retrieve 15 candidates first.
+    # This gives us room to remove
+    # weak or duplicate results later.
+    # -----------------------------------------------------
+
+    candidate_limit = (
+        limit * 3
+    )
+
+
+    # -----------------------------------------------------
+    # SEARCH QDRANT
+    # -----------------------------------------------------
+
+    response = (
+        qdrant_client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            query_filter=query_filter,
+            limit=candidate_limit,
+            with_payload=True,
+        )
+    )
+
+    results = response.points
+
+
+    # -----------------------------------------------------
+    # FILTER WEAK RESULTS
+    # -----------------------------------------------------
+
+    strong_results = [
+        result
+        for result in results
+        if result.score >= MIN_SCORE
+    ]
+
+
+    # -----------------------------------------------------
+    # FALLBACK
+    #
+    # If the threshold removes everything,
+    # return the best available result.
+    # This prevents the system from
+    # unnecessarily saying that no
+    # documents were found.
+    # -----------------------------------------------------
+
+    if not strong_results and results:
+
+        strong_results = [
+            results[0]
+        ]
+
+
+    # -----------------------------------------------------
+    # RETURN CANDIDATES
+    #
+    # Do NOT cut to `limit` here yet.
+    # retrieval_service will perform
+    # deduplication and final selection.
+    # -----------------------------------------------------
+
+    return strong_results

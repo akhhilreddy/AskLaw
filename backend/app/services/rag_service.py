@@ -17,8 +17,9 @@ def build_rag_prompt(
     limit: int = 5,
 ):
     """
-    Retrieve relevant legal document chunks
-    and build the grounded prompt for the LLM.
+    Retrieve relevant legal document chunks,
+    build the grounded prompt for the LLM,
+    and return the source metadata.
     """
 
     # -----------------------------------------------------
@@ -36,7 +37,10 @@ def build_rag_prompt(
     # -----------------------------------------------------
 
     if not chunks:
-        return None, []
+        return {
+            "prompt": None,
+            "sources": [],
+        }
 
     # -----------------------------------------------------
     # STEP 3: BUILD GROUNDED PROMPT
@@ -47,4 +51,11 @@ def build_rag_prompt(
         retrieved_chunks=chunks,
     )
 
-    return prompt, chunks
+    # -----------------------------------------------------
+    # STEP 4: RETURN PROMPT + SOURCE METADATA
+    # -----------------------------------------------------
+
+    return {
+        "prompt": prompt,
+        "sources": chunks,
+    }

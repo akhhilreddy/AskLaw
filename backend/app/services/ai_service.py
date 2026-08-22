@@ -1,3 +1,5 @@
+import json
+
 from groq import Groq
 
 from app.core.config import Settings
@@ -46,6 +48,45 @@ Rules:
 
 
 # =========================================================
+# BUILD SOURCE METADATA
+# =========================================================
+
+def build_sources(
+    retrieved_chunks,
+):
+    """
+    Convert retrieved chunks into clean
+    source metadata for the frontend.
+    """
+
+    sources = []
+
+    for chunk in retrieved_chunks:
+
+        source = {
+            "document_id": chunk.get(
+                "document_id"
+            ),
+            "filename": chunk.get(
+                "filename"
+            ),
+            "page_number": chunk.get(
+                "page_number"
+            ),
+            "chunk_index": chunk.get(
+                "chunk_index"
+            ),
+            "score": chunk.get(
+                "score"
+            ),
+        }
+
+        sources.append(source)
+
+    return sources
+
+
+# =========================================================
 # STREAM RESPONSE
 # =========================================================
 
@@ -61,7 +102,9 @@ def stream_response(
     user_message = None
 
     for message in reversed(messages):
+
         if message.role == "user":
+
             user_message = message.content
             break
 
@@ -70,22 +113,46 @@ def stream_response(
     # -----------------------------------------------------
 
     if not user_message:
+
+        error_event = {
+            "type": "error",
+            "content": (
+                "I couldn't find a user question "
+                "to answer."
+            ),
+        }
+
         yield (
-            "I couldn't find a user question "
-            "to answer."
+            json.dumps(error_event)
+            + "\n"
         )
+
         return
 
     # -----------------------------------------------------
     # BUILD RAG PROMPT
     # -----------------------------------------------------
 
-    rag_prompt, retrieved_chunks = (
-        build_rag_prompt(
-            query=user_message,
-            user_id=user_id,
-            limit=5,
-        )
+    rag_result = build_rag_prompt(
+        query=user_message,
+        user_id=user_id,
+        limit=5,
+    )
+
+    # -----------------------------------------------------
+    # EXTRACT RAG DATA
+    # -----------------------------------------------------
+
+    rag_prompt = rag_result["prompt"]
+
+    retrieved_chunks = rag_result["sources"]
+
+    # -----------------------------------------------------
+    # BUILD CLEAN SOURCE METADATA
+    # -----------------------------------------------------
+
+    sources = build_sources(
+        retrieved_chunks
     )
 
     # -----------------------------------------------------
@@ -93,6 +160,7 @@ def stream_response(
     # -----------------------------------------------------
 
     if not rag_prompt:
+
         groq_messages = [
             {
                 "role": "system",
@@ -101,6 +169,7 @@ def stream_response(
         ]
 
         for message in messages:
+
             groq_messages.append(
                 {
                     "role": message.role,
@@ -113,6 +182,7 @@ def stream_response(
     # -----------------------------------------------------
 
     else:
+
         groq_messages = [
             {
                 "role": "system",
@@ -137,13 +207,39 @@ def stream_response(
     )
 
     # -----------------------------------------------------
-    # STREAM RESPONSE
+    # STREAM RESPONSE TOKENS
     # -----------------------------------------------------
 
     for chunk in stream:
+
         content = (
             chunk.choices[0].delta.content
         )
 
         if content:
-            yield content
+
+            token_event = {
+                "type": "token",
+                "content": content,
+            }
+
+            yield (
+                json.dumps(token_event)
+                + "\n"
+            )
+
+    # -----------------------------------------------------
+    # SEND SOURCES AFTER ANSWER
+    # -----------------------------------------------------
+
+    if sources:
+
+        source_event = {
+            "type": "sources",
+            "sources": sources,
+        }
+
+        yield (
+            json.dumps(source_event)
+            + "\n"
+        )
