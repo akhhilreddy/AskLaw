@@ -38,7 +38,7 @@ EMBEDDING_MODEL = (
 # Minimum similarity score required
 # for a chunk to be considered relevant.
 
-MIN_SCORE = 0.35
+
 
 
 # =========================================================
@@ -196,9 +196,7 @@ def search_similar_chunks(
     # weak or duplicate results later.
     # -----------------------------------------------------
 
-    candidate_limit = (
-        limit * 3
-    )
+    candidate_limit = limit
 
 
     # -----------------------------------------------------
@@ -218,40 +216,5 @@ def search_similar_chunks(
     results = response.points
 
 
-    # -----------------------------------------------------
-    # FILTER WEAK RESULTS
-    # -----------------------------------------------------
-
-    strong_results = [
-        result
-        for result in results
-        if result.score >= MIN_SCORE
-    ]
-
-
-    # -----------------------------------------------------
-    # FALLBACK
-    #
-    # If the threshold removes everything,
-    # return the best available result.
-    # This prevents the system from
-    # unnecessarily saying that no
-    # documents were found.
-    # -----------------------------------------------------
-
-    if not strong_results and results:
-
-        strong_results = [
-            results[0]
-        ]
-
-
-    # -----------------------------------------------------
-    # RETURN CANDIDATES
-    #
-    # Do NOT cut to `limit` here yet.
-    # retrieval_service will perform
-    # deduplication and final selection.
-    # -----------------------------------------------------
-
-    return strong_results
+    
+    return results

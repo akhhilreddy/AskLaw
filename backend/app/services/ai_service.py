@@ -30,20 +30,18 @@ client = Groq(
 # =========================================================
 
 SYSTEM_PROMPT = """
-You are AskLaw, an AI legal assistant.
+You are AskLaw, an AI assistant for
+educational and informational legal research.
 
-Your job is to explain legal concepts
-in simple language.
+Answer clearly and professionally.
 
-Rules:
+When no document context is available,
+do not fabricate legal information.
 
-- Answer clearly and professionally.
-- Use headings and bullet points when helpful.
-- Never claim to be a licensed lawyer.
-- Do not provide fabricated legal information.
-- Responses are for educational and
-  informational purposes only.
-- Responses do not constitute legal advice.
+Responses are for educational and
+informational purposes only.
+
+They do not constitute legal advice.
 """
 
 
@@ -55,8 +53,12 @@ def build_sources(
     retrieved_chunks,
 ):
     """
-    Convert retrieved chunks into clean
-    source metadata for the frontend.
+    Build source metadata from the actual
+    retrieved Qdrant chunks.
+
+    IMPORTANT:
+    These values come from our backend,
+    NOT from the LLM.
     """
 
     sources = []
@@ -81,7 +83,9 @@ def build_sources(
             ),
         }
 
-        sources.append(source)
+        sources.append(
+            source
+        )
 
     return sources
 
@@ -96,7 +100,7 @@ def stream_response(
 ):
 
     # -----------------------------------------------------
-    # FIND THE LATEST USER QUESTION
+    # FIND LATEST USER QUESTION
     # -----------------------------------------------------
 
     user_message = None
@@ -105,7 +109,10 @@ def stream_response(
 
         if message.role == "user":
 
-            user_message = message.content
+            user_message = (
+                message.content
+            )
+
             break
 
     # -----------------------------------------------------
@@ -143,23 +150,37 @@ def stream_response(
     # EXTRACT RAG DATA
     # -----------------------------------------------------
 
-    rag_prompt = rag_result["prompt"]
+    rag_prompt = rag_result.get(
+        "prompt"
+    )
 
-    retrieved_chunks = rag_result["sources"]
+    retrieved_chunks = rag_result.get(
+        "sources",
+        [],
+    )
 
     # -----------------------------------------------------
-    # BUILD CLEAN SOURCE METADATA
+    # BUILD REAL SOURCE METADATA
+    #
+    # These sources come directly from
+    # our retrieval pipeline.
+    #
+    # The LLM does NOT generate them.
     # -----------------------------------------------------
 
     sources = build_sources(
         retrieved_chunks
     )
 
-    # -----------------------------------------------------
-    # IF NO DOCUMENTS WERE FOUND
-    # -----------------------------------------------------
+    # =====================================================
+    # BUILD GROQ MESSAGES
+    # =====================================================
 
     if not rag_prompt:
+
+        # -------------------------------------------------
+        # NO DOCUMENT CONTEXT
+        # -------------------------------------------------
 
         groq_messages = [
             {
@@ -167,6 +188,9 @@ def stream_response(
                 "content": SYSTEM_PROMPT,
             }
         ]
+
+        # Preserve conversation history
+        # when no RAG context exists.
 
         for message in messages:
 
@@ -177,11 +201,11 @@ def stream_response(
                 }
             )
 
-    # -----------------------------------------------------
-    # USE RETRIEVED LEGAL CONTEXT
-    # -----------------------------------------------------
-
     else:
+
+        # -------------------------------------------------
+        # DOCUMENT-GROUNDED RESPONSE
+        # -------------------------------------------------
 
         groq_messages = [
             {
@@ -194,43 +218,87 @@ def stream_response(
             },
         ]
 
-    # -----------------------------------------------------
+    # =====================================================
     # CALL GROQ
-    # -----------------------------------------------------
+    # =====================================================
 
-    stream = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=groq_messages,
-        temperature=0.3,
-        max_completion_tokens=2048,
-        stream=True,
-    )
+    try:
 
-    # -----------------------------------------------------
+        stream = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=groq_messages,
+            temperature=0.2,
+            max_completion_tokens=2048,
+            stream=True,
+        )
+
+    except Exception as e:
+
+        error_event = {
+            "type": "error",
+            "content": (
+                f"AI service error: {str(e)}"
+            ),
+        }
+
+        yield (
+            json.dumps(error_event)
+            + "\n"
+        )
+
+        return
+
+    # =====================================================
     # STREAM RESPONSE TOKENS
-    # -----------------------------------------------------
+    # =====================================================
 
     for chunk in stream:
 
+        if not chunk.choices:
+            continue
+
         content = (
-            chunk.choices[0].delta.content
+            chunk.choices[0]
+            .delta
+            .content
         )
 
-        if content:
+        if not content:
+            continue
 
-            token_event = {
-                "type": "token",
-                "content": content,
-            }
+        token_event = {
+            "type": "token",
+            "content": content,
+        }
 
-            yield (
-                json.dumps(token_event)
-                + "\n"
-            )
+        yield (
+            json.dumps(token_event)
+            + "\n"
+        )
 
-    # -----------------------------------------------------
-    # SEND SOURCES AFTER ANSWER
-    # -----------------------------------------------------
+    # =====================================================
+    # SEND REAL SOURCES
+    # =====================================================
+    #
+    # IMPORTANT:
+    #
+    # The source information below is generated
+    # by our Python backend from Qdrant results.
+    #
+    # It is NOT generated by Groq.
+    #
+    # Therefore if Groq says:
+    #
+    #   "page 95, chunk 253"
+    #
+    # but Qdrant actually returned:
+    #
+    #   "page 50, chunk 114"
+    #
+    # our frontend still receives the real
+    # source metadata.
+    #
+    # =====================================================
 
     if sources:
 

@@ -5,6 +5,10 @@ from pypdf import PdfReader
 
 from app.db.mongodb import document_collection
 
+from app.tasks.document_tasks import (
+    index_document,
+)
+
 
 # =========================================================
 # CHUNK SETTINGS
@@ -114,7 +118,7 @@ def save_uploaded_document(
         )
 
     # -----------------------------------------------------
-    # Combine full document text
+    # COMBINE FULL DOCUMENT TEXT
     # -----------------------------------------------------
 
     full_text = "\n\n".join(
@@ -122,7 +126,7 @@ def save_uploaded_document(
     ).strip()
 
     # -----------------------------------------------------
-    # Make sure text was extracted
+    # MAKE SURE TEXT WAS EXTRACTED
     # -----------------------------------------------------
 
     if not full_text:
@@ -136,7 +140,7 @@ def save_uploaded_document(
         )
 
     # -----------------------------------------------------
-    # Add chunk indexes
+    # ADD CHUNK INDEXES
     # -----------------------------------------------------
 
     chunk_documents = []
@@ -157,7 +161,7 @@ def save_uploaded_document(
         )
 
     # -----------------------------------------------------
-    # Save document
+    # SAVE DOCUMENT TO MONGODB
     # -----------------------------------------------------
 
     document = {
@@ -182,14 +186,33 @@ def save_uploaded_document(
     )
 
     # -----------------------------------------------------
-    # Response
+    # GET DOCUMENT ID
+    # -----------------------------------------------------
+
+    document_id = str(
+        result.inserted_id
+    )
+
+    # -----------------------------------------------------
+    # SEND BACKGROUND INDEXING TASK
+    # -----------------------------------------------------
+
+    task = index_document.delay(
+        document_id,
+        user_id,
+    )
+
+    # -----------------------------------------------------
+    # RESPONSE
     # -----------------------------------------------------
 
     return {
-        "message": "Document uploaded successfully",
-        "document_id": str(
-            result.inserted_id
+        "message": (
+            "Document uploaded successfully. "
+            "Indexing started in the background."
         ),
+        "document_id": document_id,
+        "task_id": task.id,
         "filename": file.filename,
         "page_count": len(
             reader.pages
