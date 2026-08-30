@@ -1,56 +1,87 @@
-import asyncio
-
+import httpx
 from mcp.server.mcpserver import MCPServer
-
-
-# =========================================================
-# ASKLAW MCP SERVER
-# =========================================================
 
 server = MCPServer(
     name="AskLaw MCP",
     version="1.0.0",
-    description="MCP server for the AskLaw legal research system.",
 )
 
 
-# =========================================================
-# HEALTH CHECK
-# =========================================================
-
 @server.tool()
-def health_check() -> dict:
+async def search_web(query: str, limit: int = 5) -> dict:
     """
-    Check whether the AskLaw MCP server is running.
+    Search the web through the local AskLaw SearXNG instance.
+
+    Args:
+        query: Search query.
+        limit: Maximum number of results.
+
+    Returns:
+        Structured search results.
     """
 
-    return {
-        "status": "ok",
-        "service": "AskLaw MCP",
-        "version": "1.0.0",
+    url = "http://127.0.0.1:8080/search"
+
+    params = {
+        "q": query,
+        "format": "json",
     }
 
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
 
-# =========================================================
-# ECHO
-# =========================================================
+            response = await client.get(
+                url,
+                params=params,
+            )
 
-@server.tool()
-def echo(message: str) -> dict:
-    """
-    Test MCP tool communication.
-    """
+            response.raise_for_status()
 
-    return {
-        "message": message,
-    }
+            data = response.json()
+
+        results = []
+
+        for item in data.get("results", [])[:limit]:
+
+            results.append(
+                {
+                    "title": item.get(
+                        "title",
+                        "",
+                    ),
+                    "url": item.get(
+                        "url",
+                        "",
+                    ),
+                    "content": item.get(
+                        "content",
+                        "",
+                    ),
+                    "engine": item.get(
+                        "engine",
+                        "",
+                    ),
+                }
+            )
+
+        return {
+            "query": query,
+            "results": results,
+            "count": len(results),
+        }
+
+    except Exception as exc:
+
+        return {
+            "query": query,
+            "results": [],
+            "count": 0,
+            "error": str(exc),
+        }
 
 
-# =========================================================
-# MAIN
-# =========================================================
+if __name__ == "__main__":
 
-async def main():
     print("=" * 60)
     print("ASKLAW MCP SERVER")
     print("=" * 60)
@@ -58,17 +89,12 @@ async def main():
     print("URL: http://127.0.0.1:8001/mcp")
     print("=" * 60)
 
-    await server.run_streamable_http_async(
-        host="127.0.0.1",
-        port=8001,
-        streamable_http_path="/mcp",
-        stateless_http=True,
+    import asyncio
+
+    asyncio.run(
+        server.run_streamable_http_async(
+            host="127.0.0.1",
+            port=8001,
+            streamable_http_path="/mcp",
+        )
     )
-
-
-# =========================================================
-# ENTRY POINT
-# =========================================================
-
-if __name__ == "__main__":
-    asyncio.run(main())
