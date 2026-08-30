@@ -1,49 +1,48 @@
 # =========================================================
-# PROMPT SERVICE
+# ASKLAW PROMPT SERVICE
 # =========================================================
 #
-# Builds the final prompt sent to the LLM.
+# Builds the final grounded prompt sent to the LLM.
+#
+# Supported retrieval modes:
+#
+#   RAG     -> uploaded/local documents only
+#   WEB     -> web search results only
+#   HYBRID  -> local documents + web results
 #
 # IMPORTANT:
-# The LLM is strictly grounded in the retrieved
-# document chunks.
 #
-# It must NOT use outside legal knowledge.
-# It must NOT generate source citations.
+# The LLM may ONLY use the source material supplied
+# in the prompt.
+#
+# The LLM must NOT:
+#   - use outside legal knowledge
+#   - browse the internet
+#   - invent facts
+#   - invent citations
+#   - add unsupported legal provisions
+#
+# The backend is responsible for source attribution.
 # =========================================================
 
 
-def build_legal_prompt(
-    query: str,
-    retrieved_chunks: list,
-):
-    """
-    Build a strictly source-grounded legal prompt.
+# =========================================================
+# BUILD RAG CONTEXT
+# =========================================================
 
-    Parameters
-    ----------
-    query : str
-        User's legal question.
-
-    retrieved_chunks : list
-        Chunks returned by retrieval_service.py.
-
-    Returns
-    -------
-    str
-        Prompt to send to the LLM.
-    """
-
-    # =====================================================
-    # BUILD SOURCE CONTEXT
-    # =====================================================
+def _build_rag_context(
+    rag_results: list,
+) -> str:
 
     context_parts = []
 
     for index, chunk in enumerate(
-        retrieved_chunks,
+        rag_results,
         start=1,
     ):
+
+        if not isinstance(chunk, dict):
+            continue
 
         text = chunk.get(
             "text",
@@ -55,15 +54,221 @@ def build_legal_prompt(
 
         context_parts.append(
             f"""
-SOURCE {index}
+LOCAL DOCUMENT SOURCE {index}
 
 {text}
 """
         )
 
+    return "\n".join(
+        context_parts
+    )
+
+
+# =========================================================
+# BUILD WEB CONTEXT
+# =========================================================
+
+def _build_web_context(
+    web_results: list,
+) -> str:
+
+    context_parts = []
+
+    for index, result in enumerate(
+        web_results,
+        start=1,
+    ):
+
+        if not isinstance(result, dict):
+            continue
+
+        title = result.get(
+            "title",
+            "",
+        )
+
+        content = result.get(
+            "content",
+            "",
+        )
+
+        url = result.get(
+            "url",
+            "",
+        )
+
+        engine = result.get(
+            "engine",
+            "",
+        )
+
+        if not title and not content:
+            continue
+
+        context_parts.append(
+            f"""
+WEB SEARCH SOURCE {index}
+
+Title:
+{title}
+
+Content:
+{content}
+
+URL:
+{url}
+
+Search engine:
+{engine}
+"""
+        )
+
+    return "\n".join(
+        context_parts
+    )
+
+
+# =========================================================
+# BUILD FINAL LEGAL PROMPT
+# =========================================================
+
+def build_legal_prompt(
+    query: str,
+    retrieved_chunks: list | None = None,
+    *,
+    route: str = "rag",
+    rag_results: list | None = None,
+    web_results: list | None = None,
+):
+    """
+    Build a strictly source-grounded legal prompt.
+
+    Parameters
+    ----------
+    query : str
+        User's legal question.
+
+    retrieved_chunks : list | None
+        Backward-compatible argument for the old RAG
+        pipeline.
+
+    route : str
+        Retrieval route:
+
+            rag
+            web
+            hybrid
+
+    rag_results : list | None
+        Results returned by the local RAG retriever.
+
+    web_results : list | None
+        Results returned by MCP/SearXNG web search.
+
+    Returns
+    -------
+    str
+        Final grounded prompt for the LLM.
+    """
+
+    # =====================================================
+    # BACKWARD COMPATIBILITY
+    # =====================================================
+
+    if rag_results is None:
+
+        rag_results = (
+            retrieved_chunks
+            if retrieved_chunks is not None
+            else []
+        )
+
+    if web_results is None:
+        web_results = []
+
+    # =====================================================
+    # NORMALIZE ROUTE
+    # =====================================================
+
+    route = (
+        route or "rag"
+    ).lower().strip()
+
+    if route not in {
+        "rag",
+        "web",
+        "hybrid",
+    }:
+
+        route = "rag"
+
+    # =====================================================
+    # BUILD SOURCE MATERIAL
+    # =====================================================
+
+    rag_context = _build_rag_context(
+        rag_results
+    )
+
+    web_context = _build_web_context(
+        web_results
+    )
+
+    # =====================================================
+    # COMBINE CONTEXT
+    # =====================================================
+
+    context_parts = []
+
+    if rag_context:
+
+        context_parts.append(
+            """
+==================================================
+LOCAL DOCUMENT MATERIAL
+==================================================
+
+The following material comes from the user's
+uploaded/local documents.
+
+Use it as document-grounded source material.
+
+""" + rag_context
+        )
+
+    if web_context:
+
+        context_parts.append(
+            """
+==================================================
+WEB SEARCH MATERIAL
+==================================================
+
+The following material comes from web search.
+
+Use it ONLY when answering claims supported
+by this web-search material.
+
+Do NOT treat web search material as part of the
+uploaded/local documents.
+
+""" + web_context
+        )
+
     context = "\n".join(
         context_parts
     )
+
+    # =====================================================
+    # NO SOURCE MATERIAL
+    # =====================================================
+
+    if not context.strip():
+
+        context = """
+No usable SOURCE MATERIAL was retrieved.
+"""
 
     # =====================================================
     # FINAL PROMPT
@@ -86,8 +291,8 @@ You MUST NOT use:
 
 - your general knowledge
 - your training knowledge
-- information from the internet
 - information from memory
+- information not present in the SOURCE MATERIAL
 - assumptions
 - guesses
 - speculation
@@ -96,6 +301,25 @@ Do NOT browse the internet.
 
 Every factual statement in your answer must be
 supported by the SOURCE MATERIAL.
+
+==================================================
+RETRIEVAL MODE
+==================================================
+
+The current retrieval mode is:
+
+{route}
+
+Possible modes are:
+
+- rag
+- web
+- hybrid
+
+Do not assume that information exists merely
+because the retrieval mode suggests it might.
+
+Use only the actual SOURCE MATERIAL below.
 
 ==================================================
 DO NOT INVENT INFORMATION
@@ -122,8 +346,7 @@ Never invent or add:
 - court powers
 - legal terminology
 
-unless they are explicitly supported by the
-SOURCE MATERIAL.
+unless explicitly supported by the SOURCE MATERIAL.
 
 ==================================================
 ANSWER THE EXACT QUESTION
@@ -144,6 +367,22 @@ explain only what the source supports.
 
 If the source contains only partial information:
 provide only that partial information.
+
+==================================================
+SOURCE SEPARATION
+==================================================
+
+LOCAL DOCUMENT MATERIAL and WEB SEARCH MATERIAL
+are separate sources.
+
+Do NOT pretend that web search information came
+from the uploaded/local documents.
+
+Do NOT pretend that uploaded/local document
+information came from the web.
+
+When answering a hybrid question, keep the
+distinction between these materials clear.
 
 ==================================================
 ARTICLE-SPECIFIC QUESTIONS
@@ -189,40 +428,54 @@ writs including:
 - quo warranto
 - certiorari
 
-then simply provide those five writs.
+then simply provide those supported writs.
 
-Do NOT introduce Article 139.
+Do NOT introduce another Article.
 
-Do NOT explain Article 139.
+Do NOT explain another Article.
 
-Do NOT use information from another Article
-to change or expand the answer.
+Do NOT use outside information to expand the answer.
 
-The answer must remain focused on Article 32.
+The answer must remain focused on the material
+provided for the user's question.
 
 ==================================================
 SOURCE PRIORITY
 ==================================================
 
-When multiple SOURCE MATERIAL chunks are provided:
+When multiple source materials are provided:
 
-- Prefer the chunk that directly answers
-  the user's question.
+- Prefer material that directly answers the
+  user's question.
 
-- Prefer the exact Article or provision
-  requested by the user.
+- Prefer the exact Article or provision requested
+  by the user.
 
-- Prefer actual legal text over a table of
-  contents or index entry.
+- Prefer actual legal text over an index or
+  table of contents.
 
-- Do not treat a table of contents as the
-  substantive answer.
+- Do not treat an index entry as substantive
+  legal text.
 
-- Do not use an unrelated provision simply
-  because it contains similar words.
+- Do not use unrelated material simply because
+  it contains similar words.
 
-- Do not combine unrelated sources unless
-  the connection is explicitly supported.
+- Do not combine unrelated sources unless the
+  connection is explicitly supported.
+
+==================================================
+WEB SEARCH RULE
+==================================================
+
+Web search results are still SOURCE MATERIAL.
+
+However, only use information that is actually
+present in the supplied web-search results.
+
+Do NOT fill gaps using your own knowledge.
+
+If a web result only provides a short summary,
+do not expand that summary using outside knowledge.
 
 ==================================================
 PARTIAL INFORMATION
@@ -259,11 +512,11 @@ Do not provide an outside-knowledge answer.
 EXPLANATIONS
 ==================================================
 
-You may simplify legal language that is
-explicitly present in the SOURCE MATERIAL.
+You may simplify legal language that is explicitly
+present in the SOURCE MATERIAL.
 
-However, your explanation must preserve
-the meaning of the source.
+However, your explanation must preserve the
+meaning of the source.
 
 Do NOT add:
 
@@ -283,15 +536,8 @@ You may mention an Article number only when:
 
 2. It appears explicitly in the SOURCE MATERIAL.
 
-Do NOT introduce Article numbers from your
-own knowledge.
-
-If the user asks about Article 32, you may
-refer to Article 32.
-
-Do not introduce another Article unless it
-is explicitly supported by the SOURCE MATERIAL
-and is genuinely necessary to answer the question.
+Do NOT introduce Article numbers from your own
+knowledge.
 
 ==================================================
 SOURCE CITATIONS
@@ -328,7 +574,7 @@ Use bullet points or numbered lists when
 appropriate.
 
 Use simple language when explaining the
-source.
+provided material.
 
 Do not unnecessarily repeat the source text.
 
@@ -353,19 +599,18 @@ FINAL GROUNDING CHECK
 Before producing the answer, internally check:
 
 1. Is every factual statement supported by
-   the SOURCE MATERIAL?
+   SOURCE MATERIAL?
 
 2. Did I use general legal knowledge?
 
-3. Did I invent any legal information?
+3. Did I invent legal information?
 
 4. Did I introduce an Article that is not
    necessary?
 
 5. Did I introduce another legal provision?
 
-6. Did I use information from an unrelated
-   source?
+6. Did I use unrelated source material?
 
 7. Did I add an unsupported interpretation?
 
@@ -377,6 +622,9 @@ Before producing the answer, internally check:
 
 11. Did I create a Sources or References section?
 
+12. Did I confuse local document material
+    with web search material?
+
 If any statement is unsupported,
 REMOVE THAT STATEMENT.
 
@@ -384,6 +632,17 @@ If the source is insufficient, say:
 
 "The provided documents do not contain enough
 information to answer that part of the question."
+
+==================================================
+DISCLAIMER
+==================================================
+
+This response is for educational and
+informational purposes only.
+
+It does not constitute legal advice and should
+not be treated as a substitute for advice from
+a qualified lawyer.
 
 ==================================================
 FINAL INSTRUCTION
