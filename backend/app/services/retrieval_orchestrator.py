@@ -19,9 +19,9 @@ Flow:
         |
         +---- RAG ------> Local document retrieval
         |
-        +---- WEB ------> MCP -> SearXNG
+        +---- WEB ------> MCP -> SearXNG -> Web Source Ranking
         |
-        +---- HYBRID ---> RAG + MCP
+        +---- HYBRID ---> RAG + MCP -> Web Source Ranking
         |
         v
     Unified Retrieval Result
@@ -48,18 +48,27 @@ from app.mcp.server import (
     search_web,
 )
 
+from app.services.web_source_ranker import (
+    rank_web_sources,
+)
 
- 
+
+# ============================================================
 # DEFAULTS
- 
+# ============================================================
 
 DEFAULT_RAG_LIMIT = 5
 DEFAULT_WEB_LIMIT = 5
 
+# Ask SearXNG/MCP for more candidates than we finally return.
+# The ranking layer needs a larger candidate pool to choose from.
+WEB_CANDIDATE_MULTIPLIER = 3
+MIN_WEB_CANDIDATES = 10
 
- 
+
+# ============================================================
 # NORMALIZE RAG RESULTS
- 
+# ============================================================
 
 def _normalize_rag_results(
     chunks: list[Any],
@@ -94,9 +103,9 @@ def _normalize_rag_results(
     return normalized
 
 
- 
+# ============================================================
 # NORMALIZE WEB RESULTS
- 
+# ============================================================
 
 def _normalize_web_results(
     result: dict,
@@ -142,9 +151,9 @@ def _normalize_web_results(
     return normalized
 
 
- 
+# ============================================================
 # RAG RETRIEVAL
- 
+# ============================================================
 
 def retrieve_rag(
     query: str,
@@ -166,28 +175,99 @@ def retrieve_rag(
     )
 
 
- 
+# ============================================================
 # WEB RETRIEVAL
- 
+# ============================================================
 
 async def retrieve_web(
     query: str,
     limit: int = DEFAULT_WEB_LIMIT,
 ) -> list[dict]:
+    """
+    Retrieve web candidates through MCP/SearXNG,
+    then rank them before returning the final sources.
+
+    Flow:
+
+        MCP/SearXNG
+            ↓
+        Candidate results
+            ↓
+        Normalize
+            ↓
+        Rank
+            ↓
+        Top results
+    """
+
+    # --------------------------------------------------------
+    # Get a larger candidate pool than the final result count.
+    # --------------------------------------------------------
+
+    candidate_limit = max(
+        limit * WEB_CANDIDATE_MULTIPLIER,
+        MIN_WEB_CANDIDATES,
+    )
 
     result = await search_web(
         query,
-        limit,
+        candidate_limit,
     )
 
-    return _normalize_web_results(
+    # --------------------------------------------------------
+    # Normalize raw MCP/SearXNG results.
+    # --------------------------------------------------------
+
+    normalized = _normalize_web_results(
         result
     )
 
+    print(
+        f"WEB CANDIDATES: {len(normalized)}"
+    )
 
- 
+    # --------------------------------------------------------
+    # Rank the candidates.
+    # --------------------------------------------------------
+
+    ranked = rank_web_sources(
+        query=query,
+        results=normalized,
+        limit=limit,
+    )
+
+    print(
+        f"WEB RANKED RESULTS: {len(ranked)}"
+    )
+
+    # --------------------------------------------------------
+    # Debug ranking information.
+    # --------------------------------------------------------
+
+    for index, item in enumerate(
+        ranked,
+        start=1,
+    ):
+
+        ranking = item.get(
+            "ranking",
+            {},
+        )
+
+        print(
+            f"[WEB #{index}] "
+            f"{item.get('title', '')} | "
+            f"score={ranking.get('final_score', 0)} | "
+            f"authority={ranking.get('authority_score', 0)} | "
+            f"relevance={ranking.get('relevance_score', 0)}"
+        )
+
+    return ranked
+
+
+# ============================================================
 # MAIN ORCHESTRATOR
- 
+# ============================================================
 
 async def retrieve_for_query(
     query: str,
@@ -264,6 +344,7 @@ async def retrieve_for_query(
     if route == QueryRoute.HYBRID:
 
         # Run both retrieval operations concurrently.
+
         rag_task = asyncio.to_thread(
             retrieve_rag,
             query,
@@ -310,9 +391,9 @@ async def retrieve_for_query(
     }
 
 
- 
+# ============================================================
 # SYNCHRONOUS HELPER
- 
+# ============================================================
 
 def retrieve_for_query_sync(
     query: str,
