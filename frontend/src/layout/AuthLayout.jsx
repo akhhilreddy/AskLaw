@@ -1,21 +1,2 @@
-function AuthLayout({ children }) {
-  return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <header className="flex items-center px-8 py-6">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          ⚖️ AskLaw
-        </h1>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex justify-center px-6">
-        <div className="w-full max-w-md">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-export default AuthLayout;
+import Logo from "../components/common/Logo";
+export default function AuthLayout({children}){return <div className="auth-page"><header className="site-header"><Logo/></header><main className="auth-main"><aside className="auth-aside"><span className="eyebrow">AskLAW research workspace</span><h2>Clarity begins with a better question.</h2><p>Research legal questions across documents and current web sources. Keep the answer connected to its evidence.</p><div className="auth-steps"><span>01 · Ask</span><span>02 · Research</span><span>03 · Review evidence</span></div></aside><div className="auth-form-wrap">{children}</div></main></div>}

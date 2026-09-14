@@ -1,9 +1,1 @@
-function Card({ children }) {
-  return (
-    <div className="w-full">
-      {children}
-    </div>
-  );
-}
-
-export default Card;
+export default function Card({children}){return <div className="auth-card">{children}</div>}

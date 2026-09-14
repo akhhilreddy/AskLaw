@@ -230,6 +230,8 @@ export default function useChat() {
       let assistantSources =
         [];
 
+      let assistantRoute = null;
+
 
       // -----------------------------------------------
       // CREATE ASSISTANT MESSAGE
@@ -262,6 +264,8 @@ export default function useChat() {
                   assistantResponse,
                 sources:
                   assistantSources,
+                route:
+                  assistantRoute,
                 isComplete: false,
               },
 
@@ -295,6 +299,9 @@ export default function useChat() {
 
                         sources:
                           assistantSources,
+
+                        route:
+                          assistantRoute,
                       }
                     : msg
               ),
@@ -351,6 +358,14 @@ export default function useChat() {
 
             return;
 
+          }
+
+
+          if (event.type === "route") {
+            assistantRoute = event.route;
+            createAssistantMessage();
+            updateAssistantMessage();
+            return;
           }
 
 
