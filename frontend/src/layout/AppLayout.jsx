@@ -10,11 +10,10 @@ export default function AppLayout({
   onDeleteConversation,
   onRenameConversation,
   userName,
-  section = "Chat",
-  title,
 }) {
   const sidebarButtonRef = useRef(null);
   const sidebarCloseRef = useRef(null);
+  const railExpandRef = useRef(null);
   const hadMobileDrawerRef = useRef(false);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 700px)").matches);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -52,17 +51,18 @@ export default function AppLayout({
     return () => document.removeEventListener("keydown", onEscape);
   }, [isMobile, mobileOpen]);
 
+  useEffect(() => {
+    if (!isMobile && desktopCollapsed) railExpandRef.current?.focus();
+  }, [isMobile, desktopCollapsed]);
+
   const toggleSidebar = () => {
     if (isMobile) {
       if (mobileOpen) closeMobileSidebar();
       else setMobileOpen(true);
     } else {
-      if (!desktopCollapsed) sidebarButtonRef.current?.focus();
       setDesktopCollapsed((current) => !current);
     }
   };
-  const sidebarExpanded = isMobile ? mobileOpen : !desktopCollapsed;
-  const headerTitle = title || (section === "Chat" ? "" : section);
 
   return (
     <div className="app-shell">
@@ -73,6 +73,7 @@ export default function AppLayout({
         isMobile={isMobile}
         onClose={closeMobileSidebar}
         closeButtonRef={sidebarCloseRef}
+        railExpandRef={railExpandRef}
         onCollapse={toggleSidebar}
         onNewChat={onNewChat}
         conversations={conversations}
@@ -82,14 +83,7 @@ export default function AppLayout({
         userName={userName}
       />
       <main className="workspace-main" inert={isMobile && mobileOpen}>
-        <header className="workspace-topbar">
-          <div className="topbar-kicker">
-            <button ref={sidebarButtonRef} className="sidebar-toggle" type="button" aria-label={sidebarExpanded ? (isMobile ? "Close sidebar" : "Collapse sidebar") : "Open sidebar"} aria-expanded={sidebarExpanded} onClick={toggleSidebar}>
-              <PanelLeft size={19} strokeWidth={1.7} />
-            </button>
-            {headerTitle && <span className="topbar-title" title={headerTitle}>{headerTitle}</span>}
-          </div>
-        </header>
+        {isMobile && <button ref={sidebarButtonRef} className="mobile-sidebar-trigger" type="button" aria-label="Open sidebar" aria-expanded={mobileOpen} onClick={toggleSidebar}><PanelLeft size={19} strokeWidth={1.7} /></button>}
         <div className="workspace-content">{children}</div>
       </main>
     </div>

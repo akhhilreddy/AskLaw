@@ -15,5 +15,14 @@
 .closing-inner>svg{margin:0 auto 5px;color:var(--brand)}.closing .primary-button svg{color:inherit}
 .nav-cta-short{display:none}@media(max-width:700px){.nav-cta-label{display:none}.nav-cta-short{display:inline}.process-card{padding:20px;min-height:0}.process-card b{margin-bottom:13px}.process{gap:12px}.mode-card{min-height:0;padding:21px}.mode-card svg{margin-bottom:18px}}
 .preview{transition:transform .26s ease,box-shadow .26s ease}@media(prefers-reduced-motion:no-preference){.landing .reveal{opacity:0;transform:translateY(12px);transition:opacity .48s ease,transform .48s ease}.landing .reveal.is-visible{opacity:1;transform:none}}
-/* One desktop sidebar control; the drawer keeps its close button on mobile. */
-.sidebar-collapse-button{display:none}.workspace-topbar{height:46px;flex-basis:46px}@media(max-width:700px){.sidebar-collapse-button{display:grid}.workspace-topbar{height:48px;flex-basis:48px}}
+/* The sidebar owns desktop collapse; the compact rail keeps navigation available. */
+.sidebar-collapse-button{display:grid}
+.sidebar.collapsed{width:64px;flex-basis:64px;border-right:1px solid var(--line);opacity:1;visibility:visible;pointer-events:auto}
+.sidebar.collapsed .sidebar-header,.sidebar.collapsed .sidebar-primary,.sidebar.collapsed .sidebar-label,.sidebar.collapsed .conversation-list,.sidebar.collapsed .sidebar-footer{display:none}
+.sidebar-rail{width:64px;min-width:64px;height:100%;display:flex;flex-direction:column;align-items:center;padding:24px 0 16px}
+.rail-brand-toggle,.rail-navigation button,.rail-navigation a,.rail-account{width:40px;height:40px;display:grid;place-items:center;border:0;border-radius:9px;background:transparent;color:#5e6974;position:relative;transition:background .18s ease,color .18s ease}
+.rail-brand-toggle{color:var(--brand);margin-bottom:29px}.rail-brand-icon,.rail-expand-icon{transition:opacity .16s ease}.rail-expand-icon{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:0}.rail-brand-toggle:hover .rail-brand-icon,.rail-brand-toggle:focus-visible .rail-brand-icon{opacity:0}.rail-brand-toggle:hover .rail-expand-icon,.rail-brand-toggle:focus-visible .rail-expand-icon{opacity:1}
+.rail-navigation{display:grid;gap:5px}.rail-navigation button:hover,.rail-navigation a:hover,.rail-navigation a.active,.rail-account:hover,.rail-brand-toggle:hover{background:#e5e9ec;color:var(--brand)}
+.rail-account{margin-top:auto}
+.workspace-main{position:relative}.mobile-sidebar-trigger{display:none}
+@media(max-width:700px){.mobile-sidebar-trigger{position:absolute;top:12px;left:12px;z-index:2;display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:8px;background:#f2f3f3;color:var(--brand)}.mobile-sidebar-trigger:hover{background:#e5e9ec}.workspace-content{padding-top:46px}}
