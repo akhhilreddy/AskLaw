@@ -3,22 +3,30 @@ AskLaw Web Source Ranker
 
 Ranks web-search candidates before they are passed to the LLM.
 
-The ranker uses deterministic signals:
+Deterministic signals:
 
-    - source authority
     - query relevance
+    - source authority
     - content quality
     - current-information intent
-    - publication/update date extraction
+    - publication/update date
     - freshness
+    - source type
+    - legal-event strength
+    - primary-source strength
+    - commentary strength
 
-It does NOT perform web requests.
-It does NOT call an LLM.
-It only ranks already-retrieved sources.
+The ranker:
+
+    - performs NO network requests
+    - calls NO LLM
+    - only processes already-retrieved search results
 
 Important:
-    A date extracted from search-result content is treated as the
-    source/article date, NOT automatically as the date of a judgment.
+
+A date extracted from a search snippet is treated as the date
+associated with the source/article/result. It is NOT automatically
+treated as the date of a court judgment.
 """
 
 from __future__ import annotations
@@ -32,10 +40,11 @@ from urllib.parse import urlparse
 # AUTHORITY SIGNALS
 # ============================================================
 
-# Strong authority signals for Indian legal research.
 HIGH_AUTHORITY_DOMAINS = {
     "supremecourt.gov.in": 1.00,
+    "sci.gov.in": 1.00,
     "main.sci.gov.in": 1.00,
+    "api.sci.gov.in": 1.00,
     "indiacode.nic.in": 1.00,
     "legislative.gov.in": 0.98,
     "doj.gov.in": 0.98,
@@ -59,6 +68,13 @@ LEGAL_RESEARCH_DOMAINS = {
     "ipleaders.in": 0.72,
 }
 
+LOW_QUALITY_DOMAINS = {
+    "instagram.com",
+    "facebook.com",
+    "x.com",
+    "twitter.com",
+}
+
 
 # ============================================================
 # QUERY SIGNALS
@@ -76,6 +92,20 @@ CURRENT_PATTERNS = [
     r"\bnew\b",
     r"\brecent developments?\b",
     r"\blatest developments?\b",
+    r"\bupdat(?:e|ed|es)\b",
+]
+
+JUDGMENT_QUERY_PATTERNS = [
+    r"\blatest .*judg(?:e)?ment",
+    r"\brecent .*judg(?:e)?ment",
+    r"\bcurrent .*judg(?:e)?ment",
+    r"\blatest .*ruling",
+    r"\brecent .*ruling",
+    r"\blatest .*order",
+    r"\brecent .*order",
+    r"\bnew .*judg(?:e)?ment",
+    r"\bnew .*ruling",
+    r"\bnew .*order",
 ]
 
 LEGAL_PATTERNS = [
@@ -89,40 +119,169 @@ LEGAL_PATTERNS = [
     r"\bhigh court\b",
     r"\bjudgment\b",
     r"\bjudgments\b",
+    r"\bjudgement\b",
+    r"\bjudgements\b",
     r"\bcase\b",
     r"\bcases\b",
     r"\bruling\b",
     r"\bverdict\b",
+    r"\border\b",
+    r"\bpetition\b",
+    r"\bbench\b",
 ]
+
+
+# ============================================================
+# LEGAL EVENT SIGNALS
+# ============================================================
+
+STRONG_EVENT_PATTERNS = [
+    r"\bjudgment\b",
+    r"\bjudgement\b",
+    r"\bruling\b",
+    r"\bverdict\b",
+    r"\border\b",
+    r"\bheld\b",
+    r"\bruled\b",
+    r"\bdirected\b",
+    r"\bdismissed\b",
+    r"\ballowed\b",
+    r"\bdisposed\b",
+    r"\bbench\b",
+    r"\bpetition\b",
+    r"\bwrit petition\b",
+    r"\bslp\b",
+    r"\bcivil appeal\b",
+    r"\bcriminal appeal\b",
+    r"\bthe supreme court held\b",
+    r"\bthe supreme court ruled\b",
+    r"\bsupreme court has held\b",
+    r"\bsupreme court has ruled\b",
+]
+
+WEAK_EVENT_PATTERNS = [
+    r"\bdecision\b",
+    r"\bcase law\b",
+    r"\bcourt decision\b",
+    r"\bcourt order\b",
+]
+
+COMMENTARY_PATTERNS = [
+    r"\banalysis\b",
+    r"\boverview\b",
+    r"\bbackground\b",
+    r"\bevolution\b",
+    r"\bsignificance\b",
+    r"\bexplainer\b",
+    r"\bhistory\b",
+    r"\bguide\b",
+    r"\bunderstanding\b",
+    r"\bdiscussion\b",
+    r"\bcommentary\b",
+]
+
+
+# ============================================================
+# SOURCE-TYPE SIGNALS
+# ============================================================
+
+PRIMARY_SOURCE_PATTERNS = [
+    r"\bjudgment\b",
+    r"\bjudgement\b",
+    r"\border\b",
+    r"\bjudgment\.pdf\b",
+    r"\bjudgement\.pdf\b",
+    r"\bsupreme court\b",
+    r"\bhigh court\b",
+    r"\bapi\.sci\.gov\.in\b",
+    r"\bsci\.gov\.in\b",
+    r"\bindia code\b",
+]
+
+COMMENTARY_SOURCE_PATTERNS = [
+    r"\banalysis\b",
+    r"\boverview\b",
+    r"\bbackground\b",
+    r"\bevolution\b",
+    r"\bsignificance\b",
+    r"\bexplainer\b",
+    r"\bhistory\b",
+    r"\bguide\b",
+    r"\bunderstanding\b",
+    r"\bcommentary\b",
+]
+
+NEWS_SOURCE_PATTERNS = [
+    r"\blive law\b",
+    r"\bbar and bench\b",
+    r"\bnews\b",
+    r"\bbreaking\b",
+    r"\breport\b",
+]
+
+
+# ============================================================
+# DOMAIN HELPERS
+# ============================================================
+
+def _normalize_domain(url: str) -> str:
+    """Return normalized hostname without www."""
+
+    try:
+        hostname = urlparse(url).hostname or ""
+        return hostname.lower().removeprefix("www.")
+    except Exception:
+        return ""
+
+
+# ============================================================
+# TOKENIZATION
+# ============================================================
+
+def _tokenize(text: str) -> set[str]:
+    """Simple deterministic tokenizer."""
+
+    return {
+        token
+        for token in re.findall(
+            r"\b[a-z0-9]{2,}\b",
+            text.lower(),
+        )
+    }
+
+
+# ============================================================
+# QUERY HELPERS
+# ============================================================
+
+def _wants_current_information(query: str) -> bool:
+    """Return True when the query requests current information."""
+
+    query_lower = query.lower()
+
+    return any(
+        re.search(pattern, query_lower)
+        for pattern in CURRENT_PATTERNS
+    )
+
+
+def _wants_latest_judgment(query: str) -> bool:
+    """
+    Return True when the query specifically asks for a recent
+    judgment, ruling, or order.
+    """
+
+    query_lower = query.lower()
+
+    return any(
+        re.search(pattern, query_lower)
+        for pattern in JUDGMENT_QUERY_PATTERNS
+    )
 
 
 # ============================================================
 # DATE EXTRACTION
 # ============================================================
-
-# Matches common textual date formats found in SearXNG snippets.
-#
-# Examples:
-#   25 Aug 2026
-#   25 August 2026
-#   24 Aug 2017
-#   27 Sept 2018
-DATE_PATTERNS = [
-    (
-        re.compile(
-            r"\b("
-            r"0?[1-9]|[12]\d|3[01]"
-            r")\s+"
-            r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|"
-            r"May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|"
-            r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-            r"\s+"
-            r"(20\d{2})\b",
-            re.IGNORECASE,
-        ),
-        "%d %b %Y",
-    ),
-]
 
 MONTH_MAP = {
     "jan": 1,
@@ -151,9 +310,23 @@ MONTH_MAP = {
     "december": 12,
 }
 
+DATE_PATTERN = re.compile(
+    r"\b("
+    r"0?[1-9]|[12]\d|3[01]"
+    r")\s+"
+    r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|"
+    r"May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|"
+    r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\s+"
+    r"(20\d{2})\b",
+    re.IGNORECASE,
+)
 
-def _parse_textual_date(match: re.Match[str]) -> date | None:
-    """Convert a textual day-month-year regex match into a date."""
+
+def _parse_textual_date(
+    match: re.Match[str],
+) -> date | None:
+    """Convert a textual date regex match into a date."""
 
     try:
         day = int(match.group(1))
@@ -175,6 +348,61 @@ def _parse_textual_date(match: re.Match[str]) -> date | None:
         return None
 
 
+def _parse_explicit_date(
+    value: object,
+) -> date | None:
+    """Parse common explicit date representations."""
+
+    if isinstance(value, date):
+        return value
+
+    if not isinstance(value, str):
+        return None
+
+    value = value.strip()
+
+    if not value:
+        return None
+
+    iso_match = re.match(
+        r"^(20\d{2})-(\d{1,2})-(\d{1,2})",
+        value,
+    )
+
+    if iso_match:
+        try:
+            return date(
+                year=int(iso_match.group(1)),
+                month=int(iso_match.group(2)),
+                day=int(iso_match.group(3)),
+            )
+        except ValueError:
+            return None
+
+    textual_match = DATE_PATTERN.search(value)
+
+    if textual_match:
+        return _parse_textual_date(textual_match)
+
+    return None
+
+
+def _find_date_in_text(
+    text: str,
+) -> date | None:
+    """Find the first supported textual date."""
+
+    if not text:
+        return None
+
+    match = DATE_PATTERN.search(text)
+
+    if match:
+        return _parse_textual_date(match)
+
+    return None
+
+
 def _extract_result_date(
     result: dict,
 ) -> tuple[date | None, str | None, float]:
@@ -183,31 +411,19 @@ def _extract_result_date(
 
     Priority:
 
-        1. Explicit SearXNG publishedDate
-        2. Explicit SearXNG pubdate
-        3. Date found in title
-        4. Date found in content
-        5. Date found in URL
-
-    Returns:
-
-        (date, source, confidence)
-
-    Confidence reflects how directly the date was supplied.
-
-    Important:
-        This date is treated as a publication/update/search-result date.
-        It must NOT be interpreted as the date of a court judgment.
+        1. publishedDate
+        2. pubdate
+        3. title
+        4. content
+        5. URL
     """
-
-    # --------------------------------------------------------
-    # 1. Explicit publishedDate
-    # --------------------------------------------------------
 
     published_date = result.get("publishedDate")
 
     if published_date:
-        parsed = _parse_explicit_date(published_date)
+        parsed = _parse_explicit_date(
+            published_date
+        )
 
         if parsed:
             return (
@@ -216,14 +432,12 @@ def _extract_result_date(
                 1.00,
             )
 
-    # --------------------------------------------------------
-    # 2. Explicit pubdate
-    # --------------------------------------------------------
-
     pubdate = result.get("pubdate")
 
     if pubdate:
-        parsed = _parse_explicit_date(pubdate)
+        parsed = _parse_explicit_date(
+            pubdate
+        )
 
         if parsed:
             return (
@@ -231,10 +445,6 @@ def _extract_result_date(
                 "pubdate",
                 0.95,
             )
-
-    # --------------------------------------------------------
-    # 3. Title
-    # --------------------------------------------------------
 
     title = (result.get("title") or "").strip()
 
@@ -247,10 +457,6 @@ def _extract_result_date(
             0.90,
         )
 
-    # --------------------------------------------------------
-    # 4. Content
-    # --------------------------------------------------------
-
     content = (result.get("content") or "").strip()
 
     parsed = _find_date_in_text(content)
@@ -261,10 +467,6 @@ def _extract_result_date(
             "content",
             0.70,
         )
-
-    # --------------------------------------------------------
-    # 5. URL
-    # --------------------------------------------------------
 
     url = (result.get("url") or "").strip()
 
@@ -284,66 +486,6 @@ def _extract_result_date(
     )
 
 
-def _parse_explicit_date(value: object) -> date | None:
-    """
-    Parse an explicit date-like value returned by SearXNG.
-
-    Handles common formats such as:
-
-        2026-08-25
-        2026-08-25T12:30:00
-        2026-08-25T12:30:00Z
-    """
-
-    if isinstance(value, date):
-        return value
-
-    if not isinstance(value, str):
-        return None
-
-    value = value.strip()
-
-    if not value:
-        return None
-
-    # ISO date at the beginning of the value.
-    match = re.match(
-        r"^(20\d{2})-(\d{1,2})-(\d{1,2})",
-        value,
-    )
-
-    if match:
-        try:
-            return date(
-                year=int(match.group(1)),
-                month=int(match.group(2)),
-                day=int(match.group(3)),
-            )
-        except ValueError:
-            return None
-
-    # Fallback to textual date parsing.
-    return _find_date_in_text(value)
-
-
-def _find_date_in_text(text: str) -> date | None:
-    """Find the first supported textual date inside arbitrary text."""
-
-    if not text:
-        return None
-
-    for pattern, _ in DATE_PATTERNS:
-        match = pattern.search(text)
-
-        if match:
-            parsed = _parse_textual_date(match)
-
-            if parsed:
-                return parsed
-
-    return None
-
-
 # ============================================================
 # FRESHNESS
 # ============================================================
@@ -355,15 +497,14 @@ def _freshness_score(
     """
     Convert source age into a deterministic freshness score.
 
-    Score behavior:
+    Very recent:
+        1.00
 
-        1.00 -> very recent
-        ~0.75 -> recent
-        ~0.50 -> about one year old
-        lower -> older material
+    Recent:
+        0.95 - 0.75
 
-    Unknown dates return a neutral score of 0.0 rather than
-    pretending that the source is fresh.
+    Older:
+        progressively lower
     """
 
     if result_date is None:
@@ -372,15 +513,10 @@ def _freshness_score(
     if today is None:
         today = date.today()
 
-    age_days = (today - result_date).days
-
-    # Future dates should not receive a negative age.
-    if age_days < 0:
-        age_days = 0
-
-    # --------------------------------------------------------
-    # Freshness buckets
-    # --------------------------------------------------------
+    age_days = max(
+        (today - result_date).days,
+        0,
+    )
 
     if age_days <= 7:
         return 1.00
@@ -410,51 +546,6 @@ def _freshness_score(
 
 
 # ============================================================
-# QUERY HELPERS
-# ============================================================
-
-def _wants_current_information(query: str) -> bool:
-    """Return True when the query explicitly requests recent/current info."""
-
-    query_lower = query.lower()
-
-    return any(
-        re.search(pattern, query_lower)
-        for pattern in CURRENT_PATTERNS
-    )
-
-
-# ============================================================
-# DOMAIN HELPERS
-# ============================================================
-
-def _normalize_domain(url: str) -> str:
-    """Return a normalized hostname without www."""
-
-    try:
-        hostname = urlparse(url).hostname or ""
-        return hostname.lower().strip("www.")
-    except Exception:
-        return ""
-
-
-# ============================================================
-# TOKENIZATION
-# ============================================================
-
-def _tokenize(text: str) -> set[str]:
-    """Simple deterministic word tokenizer."""
-
-    return {
-        token
-        for token in re.findall(
-            r"\b[a-z0-9]{2,}\b",
-            text.lower(),
-        )
-    }
-
-
-# ============================================================
 # RELEVANCE
 # ============================================================
 
@@ -464,8 +555,7 @@ def _query_relevance(
 ) -> float:
     """
     Estimate lexical relevance between query and result.
-
-    Uses overlap between query terms and the source title/content.
+    Title is weighted more heavily than content.
     """
 
     query_tokens = _tokenize(query)
@@ -473,23 +563,24 @@ def _query_relevance(
     if not query_tokens:
         return 0.0
 
-    title = result.get("title", "")
-    content = result.get("content", "")
+    title_tokens = _tokenize(
+        result.get("title", "")
+    )
 
-    title_tokens = _tokenize(title)
-    content_tokens = _tokenize(content)
+    content_tokens = _tokenize(
+        result.get("content", "")
+    )
 
-    title_overlap = len(
-        query_tokens & title_tokens
-    ) / len(query_tokens)
+    title_overlap = (
+        len(query_tokens & title_tokens)
+        / len(query_tokens)
+    )
 
     content_overlap = (
         len(query_tokens & content_tokens)
         / len(query_tokens)
     )
 
-    # Titles are generally a stronger relevance signal than long
-    # body snippets.
     score = (
         0.70 * title_overlap
         + 0.30 * content_overlap
@@ -502,8 +593,10 @@ def _query_relevance(
 # AUTHORITY
 # ============================================================
 
-def _authority_score(result: dict) -> float:
-    """Score source authority using its domain."""
+def _authority_score(
+    result: dict,
+) -> float:
+    """Score source authority based on domain."""
 
     domain = _normalize_domain(
         result.get("url", "")
@@ -524,6 +617,9 @@ def _authority_score(result: dict) -> float:
     ):
         return 0.82
 
+    if domain in LOW_QUALITY_DOMAINS:
+        return 0.10
+
     return 0.45
 
 
@@ -531,16 +627,22 @@ def _authority_score(result: dict) -> float:
 # CONTENT QUALITY
 # ============================================================
 
-def _content_quality_score(result: dict) -> float:
-    """
-    Score basic result quality.
+def _content_quality_score(
+    result: dict,
+) -> float:
+    """Score basic result quality."""
 
-    This is deliberately conservative and deterministic.
-    """
+    title = (
+        result.get("title") or ""
+    ).strip()
 
-    title = (result.get("title") or "").strip()
-    content = (result.get("content") or "").strip()
-    url = (result.get("url") or "").strip()
+    content = (
+        result.get("content") or ""
+    ).strip()
+
+    url = (
+        result.get("url") or ""
+    ).strip()
 
     score = 0.0
 
@@ -559,12 +661,12 @@ def _content_quality_score(result: dict) -> float:
     elif content_length > 0:
         score += 0.10
 
-    # Avoid obvious search-result junk.
     junk_patterns = (
         "captcha",
         "enable javascript",
         "access denied",
         "page not found",
+        "unusual traffic",
     )
 
     if any(
@@ -577,7 +679,7 @@ def _content_quality_score(result: dict) -> float:
 
 
 # ============================================================
-# CURRENT-INTENT SIGNAL
+# CURRENT INTENT
 # ============================================================
 
 def _current_intent_score(
@@ -585,19 +687,21 @@ def _current_intent_score(
     result: dict,
 ) -> float:
     """
-    Give a modest bonus when current information is requested.
+    Score alignment with current-information intent.
 
-    This signal is intentionally weaker than true freshness.
-
-    A source containing words such as "latest" or "2026" is not
-    automatically recent or authoritative.
+    This is weaker than actual freshness.
     """
 
     if not _wants_current_information(query):
         return 0.5
 
-    title = (result.get("title") or "").lower()
-    content = (result.get("content") or "").lower()
+    title = (
+        result.get("title") or ""
+    ).lower()
+
+    content = (
+        result.get("content") or ""
+    ).lower()
 
     current_words = (
         "latest",
@@ -610,6 +714,9 @@ def _current_intent_score(
         "judgment",
         "judgement",
         "order",
+        "ruling",
+        "held",
+        "ruled",
     )
 
     hits = sum(
@@ -619,8 +726,273 @@ def _current_intent_score(
     )
 
     return min(
-        0.5 + (hits * 0.10),
+        0.5 + (hits * 0.08),
         1.0,
+    )
+
+
+# ============================================================
+# LEGAL EVENT DETECTION
+# ============================================================
+
+def _count_patterns(
+    text: str,
+    patterns: list[str],
+) -> int:
+    """Count how many distinct patterns match."""
+
+    if not text:
+        return 0
+
+    count = 0
+
+    for pattern in patterns:
+        if re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        ):
+            count += 1
+
+    return count
+
+
+def _legal_event_score(
+    result: dict,
+) -> float:
+    """
+    Estimate how strongly a result indicates an actual legal event.
+
+    This is a ranking signal, NOT a legal conclusion.
+    """
+
+    title = (
+        result.get("title") or ""
+    ).strip()
+
+    content = (
+        result.get("content") or ""
+    ).strip()
+
+    text = f"{title} {content}"
+
+    strong_hits = _count_patterns(
+        text,
+        STRONG_EVENT_PATTERNS,
+    )
+
+    weak_hits = _count_patterns(
+        text,
+        WEAK_EVENT_PATTERNS,
+    )
+
+    commentary_hits = _count_patterns(
+        text,
+        COMMENTARY_PATTERNS,
+    )
+
+    score = (
+        strong_hits * 0.14
+        + weak_hits * 0.07
+        - commentary_hits * 0.05
+    )
+
+    return max(
+        0.0,
+        min(score, 1.0),
+    )
+
+
+# ============================================================
+# SOURCE TYPE CLASSIFICATION
+# ============================================================
+
+def _classify_source_type(
+    result: dict,
+) -> tuple[str, float]:
+    """
+    Classify source into:
+
+        primary
+        legal_reporting
+        commentary
+        general
+    """
+
+    title = (
+        result.get("title") or ""
+    ).lower()
+
+    content = (
+        result.get("content") or ""
+    ).lower()
+
+    url = (
+        result.get("url") or ""
+    ).lower()
+
+    text = (
+        f"{title} {content} {url}"
+    )
+
+    primary_hits = _count_patterns(
+        text,
+        PRIMARY_SOURCE_PATTERNS,
+    )
+
+    commentary_hits = _count_patterns(
+        text,
+        COMMENTARY_SOURCE_PATTERNS,
+    )
+
+    news_hits = _count_patterns(
+        text,
+        NEWS_SOURCE_PATTERNS,
+    )
+
+    domain = _normalize_domain(
+        result.get("url", "")
+    )
+
+    if domain in HIGH_AUTHORITY_DOMAINS:
+        return (
+            "primary",
+            0.95,
+        )
+
+    if (
+        primary_hits >= 2
+        and commentary_hits == 0
+    ):
+        return (
+            "primary",
+            0.80,
+        )
+
+    if (
+        commentary_hits >= 2
+        and primary_hits == 0
+    ):
+        return (
+            "commentary",
+            0.85,
+        )
+
+    if (
+        news_hits >= 1
+        or domain in LEGAL_RESEARCH_DOMAINS
+    ):
+        return (
+            "legal_reporting",
+            0.80,
+        )
+
+    if commentary_hits >= 1:
+        return (
+            "commentary",
+            0.65,
+        )
+
+    return (
+        "general",
+        0.50,
+    )
+
+
+# ============================================================
+# PRIMARY SOURCE SIGNAL
+# ============================================================
+
+def _primary_source_score(
+    result: dict,
+    source_type: str,
+) -> float:
+    """Estimate primary-source strength."""
+
+    domain = _normalize_domain(
+        result.get("url", "")
+    )
+
+    if domain in HIGH_AUTHORITY_DOMAINS:
+        return 1.0
+
+    if source_type == "primary":
+        return 0.85
+
+    if source_type == "legal_reporting":
+        return 0.35
+
+    if source_type == "commentary":
+        return 0.15
+
+    return 0.20
+
+
+# ============================================================
+# COMMENTARY SIGNAL
+# ============================================================
+
+def _commentary_score(
+    result: dict,
+    source_type: str,
+) -> float:
+    """Estimate whether the result is commentary."""
+
+    if source_type == "commentary":
+        return 1.0
+
+    if source_type == "legal_reporting":
+        return 0.35
+
+    if source_type == "primary":
+        return 0.05
+
+    title = (
+        result.get("title") or ""
+    ).lower()
+
+    hits = _count_patterns(
+        title,
+        COMMENTARY_PATTERNS,
+    )
+
+    return min(
+        hits * 0.20,
+        1.0,
+    )
+
+
+# ============================================================
+# TOPIC GROUPING
+# ============================================================
+
+def _topic_key(
+    result: dict,
+) -> str:
+    """
+    Create a lightweight normalized topic key.
+
+    Used later for identifying obvious same-topic/same-case sources.
+    """
+
+    title = (
+        result.get("title") or ""
+    ).lower()
+
+    title = re.sub(
+        r"[^a-z0-9\s]",
+        " ",
+        title,
+    )
+
+    tokens = [
+        token
+        for token in title.split()
+        if len(token) >= 4
+    ]
+
+    return " ".join(
+        tokens[:8]
     )
 
 
@@ -632,7 +1004,7 @@ def _score_result(
     query: str,
     result: dict,
 ) -> dict:
-    """Return the result with ranking signals attached."""
+    """Attach all ranking signals to a result."""
 
     relevance = _query_relevance(
         query,
@@ -660,42 +1032,91 @@ def _score_result(
         result_date,
     )
 
+    source_type, source_type_confidence = (
+        _classify_source_type(result)
+    )
+
+    legal_event = _legal_event_score(
+        result,
+    )
+
+    primary_source = _primary_source_score(
+        result,
+        source_type,
+    )
+
+    commentary = _commentary_score(
+        result,
+        source_type,
+    )
+
     wants_current = _wants_current_information(
         query,
     )
 
-    # --------------------------------------------------------
-    # Query-dependent weighting
-    # --------------------------------------------------------
-    #
-    # Normal legal query:
-    #
-    #   relevance + authority dominate
-    #
-    # Latest/current query:
-    #
-    #   freshness gets a stronger role
-    #
-    # This prevents an old but foundational source from being
-    # unnecessarily pushed down for a normal legal question,
-    # while allowing recent material to rise for queries that
-    # explicitly ask for current information.
+    wants_latest_judgment = _wants_latest_judgment(
+        query,
+    )
 
-    if wants_current:
-        final_score = (
-            0.35 * relevance
-            + 0.25 * authority
-            + 0.15 * content_quality
-            + 0.05 * current_intent
-            + 0.20 * freshness
-        )
-    else:
+    # ========================================================
+    # NORMAL QUERY
+    # ========================================================
+
+    if not wants_current:
+
         final_score = (
             0.45 * relevance
             + 0.30 * authority
             + 0.15 * content_quality
-            + 0.10 * current_intent
+            + 0.05 * primary_source
+            + 0.05 * legal_event
         )
+
+    # ========================================================
+    # CURRENT INFORMATION QUERY
+    # ========================================================
+
+    elif not wants_latest_judgment:
+
+        final_score = (
+            0.35 * relevance
+            + 0.23 * authority
+            + 0.12 * content_quality
+            + 0.05 * current_intent
+            + 0.15 * freshness
+            + 0.05 * primary_source
+            + 0.05 * legal_event
+        )
+
+    # ========================================================
+    # LATEST / RECENT LEGAL EVENT QUERY
+    # ========================================================
+
+    else:
+
+        final_score = (
+            0.30 * relevance
+            + 0.20 * authority
+            + 0.10 * content_quality
+            + 0.05 * current_intent
+            + 0.20 * freshness
+            + 0.10 * legal_event
+            + 0.05 * primary_source
+        )
+
+        # Commentary is slightly penalized only for queries
+        # explicitly asking for a latest judgment/ruling/order.
+        final_score -= (
+            0.05 * commentary
+        )
+
+    final_score = max(
+        0.0,
+        min(
+            final_score,
+            1.0,
+        ),
+    )
 
     ranked = dict(result)
 
@@ -720,15 +1141,23 @@ def _score_result(
             freshness,
             4,
         ),
+        "legal_event_score": round(
+            legal_event,
+            4,
+        ),
+        "primary_source_score": round(
+            primary_source,
+            4,
+        ),
+        "commentary_score": round(
+            commentary,
+            4,
+        ),
         "final_score": round(
             final_score,
             4,
         ),
     }
-
-    # --------------------------------------------------------
-    # Date metadata
-    # --------------------------------------------------------
 
     ranked["date_metadata"] = {
         "date": (
@@ -740,6 +1169,20 @@ def _score_result(
         "confidence": round(
             date_confidence,
             4,
+        ),
+    }
+
+    ranked["source_metadata"] = {
+        "source_type": source_type,
+        "source_type_confidence": round(
+            source_type_confidence,
+            4,
+        ),
+        "domain": _normalize_domain(
+            result.get("url", "")
+        ),
+        "topic_key": _topic_key(
+            result
         ),
     }
 
@@ -759,7 +1202,10 @@ def _deduplicate_results(
     deduplicated: list[dict] = []
 
     for result in results:
-        url = (result.get("url") or "").strip().lower()
+
+        url = (
+            result.get("url") or ""
+        ).strip().lower()
 
         if not url:
             continue
@@ -768,9 +1214,58 @@ def _deduplicate_results(
             continue
 
         seen.add(url)
-        deduplicated.append(result)
+
+        deduplicated.append(
+            result
+        )
 
     return deduplicated
+
+
+# ============================================================
+# SOURCE GROUPING
+# ============================================================
+
+def _annotate_source_groups(
+    ranked: list[dict],
+) -> list[dict]:
+    """
+    Attach simple source-group identifiers.
+
+    This will support later conflict detection and source diversity.
+    """
+
+    groups: dict[str, int] = {}
+
+    for item in ranked:
+
+        metadata = item.get(
+            "source_metadata",
+            {},
+        )
+
+        topic_key = metadata.get(
+            "topic_key",
+            "",
+        )
+
+        if not topic_key:
+            continue
+
+        if topic_key not in groups:
+            groups[topic_key] = (
+                len(groups) + 1
+            )
+
+        metadata["source_group"] = (
+            groups[topic_key]
+        )
+
+        item["source_metadata"] = (
+            metadata
+        )
+
+    return ranked
 
 
 # ============================================================
@@ -785,7 +1280,7 @@ def rank_web_sources(
     """
     Rank and return the strongest web sources.
 
-    No network requests are made here.
+    No network requests are made.
     """
 
     if not results:
@@ -804,8 +1299,16 @@ def rank_web_sources(
     ]
 
     ranked.sort(
-        key=lambda item: item["ranking"]["final_score"],
+        key=lambda item: (
+            item["ranking"]["final_score"],
+            item["ranking"]["authority_score"],
+            item["ranking"]["freshness_score"],
+        ),
         reverse=True,
+    )
+
+    ranked = _annotate_source_groups(
+        ranked
     )
 
     return ranked[:limit]
