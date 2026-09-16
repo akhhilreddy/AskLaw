@@ -1,0 +1,43 @@
+services:
+
+  mongodb:
+    image: mongo:8
+    container_name: asklaw-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - /Users/akhilreddy/mongodb-data:/data/db
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: asklaw-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - /Users/akhilreddy/qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: asklaw-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - asklaw-redis-data:/data
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: asklaw-searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - /Users/akhilreddy/asklaw-searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - asklaw-searxng-cache:/var/cache/searxng
+    restart: unless-stopped
+
+volumes:
+  asklaw-redis-data:
+  asklaw-searxng-cache:
