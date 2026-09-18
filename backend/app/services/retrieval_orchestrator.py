@@ -152,13 +152,11 @@ def _extract_legal_topic(
 
     Example:
 
-        "What is the latest Supreme Court judgment on privacy in India?"
+        What is the latest Supreme Court judgment on privacy in India?
 
     becomes approximately:
 
-        "privacy"
-
-    This is intentionally deterministic and conservative.
+        privacy
     """
 
     topic = query.lower().strip()
@@ -225,7 +223,7 @@ def _extract_legal_topic(
         topic,
     )
 
-    # Remove legal-event wording.
+    # Remove legal event wording.
     topic = re.sub(
         r"\bjudgments?\b",
         "",
@@ -275,7 +273,7 @@ def _extract_legal_topic(
         topic,
     )
 
-    # Remove geographical filler.
+    # Remove geography/filler.
     topic = re.sub(
         r"\bin\s+india\b",
         "",
@@ -288,7 +286,6 @@ def _extract_legal_topic(
         topic,
     )
 
-    # Remove common connective words.
     topic = re.sub(
         r"\bon\b",
         "",
@@ -332,7 +329,6 @@ def _extract_legal_topic(
         topic,
     ).strip()
 
-    # Remove punctuation at the edges.
     topic = topic.strip(
         " ?!.,:;()[]{}"
     )
@@ -373,17 +369,10 @@ def _build_targeted_web_queries(
         base_query
     )
 
-    # --------------------------------------------------------
-    # Fallback if topic extraction failed.
-    # --------------------------------------------------------
-
     if not topic:
         topic = base_query
 
-    # --------------------------------------------------------
     # Focused general searches.
-    # --------------------------------------------------------
-
     queries.append(
         f"latest Supreme Court judgment "
         f"{topic} India {year}"
@@ -399,10 +388,7 @@ def _build_targeted_web_queries(
         f"India {year}"
     )
 
-    # --------------------------------------------------------
     # Primary-source searches.
-    # --------------------------------------------------------
-
     queries.append(
         f"site:api.sci.gov.in "
         f"{topic} Supreme Court {year}"
@@ -413,10 +399,7 @@ def _build_targeted_web_queries(
         f"{topic} Supreme Court {year}"
     )
 
-    # --------------------------------------------------------
     # Preserve order and remove duplicates.
-    # --------------------------------------------------------
-
     seen: set[str] = set()
     unique_queries: list[str] = []
 
@@ -450,9 +433,7 @@ def _build_targeted_web_queries(
 def _normalize_rag_results(
     results: Any,
 ) -> list[dict]:
-    """
-    Normalize RAG retrieval output into a stable list format.
-    """
+    """Normalize RAG retrieval output."""
 
     if results is None:
         return []
@@ -481,9 +462,7 @@ def _normalize_rag_results(
 def _normalize_web_results(
     results: Any,
 ) -> list[dict]:
-    """
-    Normalize MCP/SearXNG output into a stable list format.
-    """
+    """Normalize MCP/SearXNG output."""
 
     if not results:
         return []
@@ -541,7 +520,7 @@ def _normalize_web_results(
 def _deduplicate_web_results(
     results: list[dict],
 ) -> list[dict]:
-    """Deduplicate web results by normalized URL."""
+    """Deduplicate web results by URL."""
 
     seen: set[str] = set()
     deduplicated: list[dict] = []
@@ -577,13 +556,18 @@ def retrieve_rag(
     limit: int = 5,
 ) -> list[dict]:
     """
-    Retrieve relevant chunks from local legal documents.
+    Retrieve relevant local-document chunks.
+
+    NOTE:
+    The underlying retrieval function uses positional arguments
+    here deliberately because its parameter name differs from the
+    orchestrator's document_id name.
     """
 
     results = retrieve_relevant_chunks(
-        query=query,
-        document_id=document_id,
-        limit=limit,
+        query,
+        document_id,
+        limit,
     )
 
     return _normalize_rag_results(
@@ -613,19 +597,12 @@ async def retrieve_web(
         query
     )
 
-    # --------------------------------------------------------
-    # Request more candidates before ranking.
-    # --------------------------------------------------------
-
     candidate_limit = max(
         limit * 3,
         10,
     )
 
-    # --------------------------------------------------------
-    # Search all queries in parallel.
-    # --------------------------------------------------------
-
+    # Run all web searches in parallel.
     search_tasks = [
         search_web(
             search_query,
@@ -639,10 +616,7 @@ async def retrieve_web(
         return_exceptions=True,
     )
 
-    # --------------------------------------------------------
-    # Combine candidate results.
-    # --------------------------------------------------------
-
+    # Combine candidates.
     combined_candidates: list[dict] = []
 
     for search_result in search_results:
@@ -665,17 +639,10 @@ async def retrieve_web(
             normalized
         )
 
-    # --------------------------------------------------------
     # Deduplicate.
-    # --------------------------------------------------------
-
     deduplicated = _deduplicate_web_results(
         combined_candidates
     )
-
-    # --------------------------------------------------------
-    # Debug output.
-    # --------------------------------------------------------
 
     print(
         f"WEB TARGETED QUERIES: "
@@ -696,10 +663,7 @@ async def retrieve_web(
         f"{len(deduplicated)}"
     )
 
-    # --------------------------------------------------------
     # Rank.
-    # --------------------------------------------------------
-
     ranked = rank_web_sources(
         query=query,
         results=deduplicated,
@@ -929,9 +893,7 @@ def retrieve_for_query_sync(
     rag_limit: int = 5,
     web_limit: int = 5,
 ) -> dict:
-    """
-    Synchronous wrapper for callers that cannot await.
-    """
+    """Synchronous wrapper for callers that cannot await."""
 
     return asyncio.run(
         retrieve_for_query(
