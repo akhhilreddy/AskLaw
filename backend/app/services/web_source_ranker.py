@@ -108,6 +108,64 @@ JUDGMENT_QUERY_PATTERNS = [
     r"\bnew .*order",
 ]
 
+QUERY_TOPIC_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "can",
+    "does",
+    "for",
+    "from",
+    "get",
+    "has",
+    "have",
+    "in",
+    "india",
+    "is",
+    "latest",
+    "new",
+    "of",
+    "on",
+    "or",
+    "recent",
+    "recently",
+    "ruling",
+    "supreme",
+    "court",
+    "the",
+    "this",
+    "today",
+    "was",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "year",
+    "judgment",
+    "judgments",
+    "judgement",
+    "judgements",
+    "order",
+    "orders",
+    "decision",
+    "decisions",
+    "developments",
+    "development",
+    "act",
+    "law",
+    "case",
+    "cases",
+}
+
+
 LEGAL_PATTERNS = [
     r"\barticle\b",
     r"\bsection\b",
@@ -279,6 +337,19 @@ def _wants_latest_judgment(query: str) -> bool:
     )
 
 
+def _is_legal_query(
+    query: str,
+) -> bool:
+    """Return True when the query clearly concerns a legal topic."""
+
+    query_lower = query.lower()
+
+    return any(
+        re.search(pattern, query_lower)
+        for pattern in LEGAL_PATTERNS
+    )
+
+
 # ============================================================
 # DATE EXTRACTION
 # ============================================================
@@ -313,12 +384,25 @@ MONTH_MAP = {
 DATE_PATTERN = re.compile(
     r"\b("
     r"0?[1-9]|[12]\d|3[01]"
-    r")\s+"
+    r")(?:\s+|[-_])"
     r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|"
     r"May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|"
     r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-    r"\s+"
+    r"(?:\s+|[-_])"
     r"(20\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+URL_TEXTUAL_DATE_PATTERN = re.compile(
+    r"("
+    r"0?[1-9]|[12]\d|3[01]"
+    r")[-_]"
+    r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|"
+    r"May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|"
+    r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"[-_]"
+    r"(20\d{2})",
     re.IGNORECASE,
 )
 
@@ -403,20 +487,150 @@ def _find_date_in_text(
     return None
 
 
+def _find_numeric_date_in_text(
+    text: str,
+) -> date | None:
+    """Find a numeric date such as 14.07.2026 or 14/07/2026."""
+
+    if not text:
+        return None
+
+    match = re.search(
+        r"\b(0?[1-9]|[12]\d|3[01])[./-](0?[1-9]|1[0-2])[./-](20\d{2})\b",
+        text,
+    )
+
+    if not match:
+        return None
+
+    try:
+        return date(
+            year=int(match.group(3)),
+            month=int(match.group(2)),
+            day=int(match.group(1)),
+        )
+    except ValueError:
+        return None
+
+
+def _find_judgment_date_in_text(
+    text: str,
+) -> date | None:
+    """
+    Find a date that is explicitly associated with a judgment/order/ruling.
+
+    A generic date at the beginning of a search snippet is not enough,
+    because it can represent an article/update date rather than the date
+    of the underlying legal event.
+    """
+
+    if not text:
+        return None
+
+    judgment_terms = (
+        "judgment",
+        "judgement",
+        "order",
+        "ruling",
+        "decision",
+    )
+
+    for match in DATE_PATTERN.finditer(text):
+        prefix = text[
+            max(0, match.start() - 80):match.start()
+        ].lower()
+
+        if any(term in prefix for term in judgment_terms):
+            return _parse_textual_date(match)
+
+    url_match = URL_TEXTUAL_DATE_PATTERN.search(text)
+
+    if url_match:
+        prefix = text[
+            max(0, url_match.start() - 80):url_match.start()
+        ].lower()
+
+        if any(term in prefix for term in judgment_terms):
+            try:
+                return date(
+                    year=int(url_match.group(3)),
+                    month=MONTH_MAP.get(
+                        url_match.group(2).lower(),
+                        0,
+                    ),
+                    day=int(url_match.group(1)),
+                )
+            except (TypeError, ValueError):
+                return None
+
+    numeric_match = re.search(
+        r"(judg(?:ment|ement)|order|ruling|decision)"
+        r"[^.]{0,80}?"
+        r"(0?[1-9]|[12]\d|3[01])[./-](0?[1-9]|1[0-2])[./-](20\d{2})\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if numeric_match:
+        try:
+            return date(
+                year=int(numeric_match.group(4)),
+                month=int(numeric_match.group(3)),
+                day=int(numeric_match.group(2)),
+            )
+        except ValueError:
+            return None
+
+    return None
+
+
 def _extract_result_date(
     result: dict,
+    *,
+    latest_judgment: bool = False,
 ) -> tuple[date | None, str | None, float]:
     """
-    Extract the best available source date.
+    Extract the best date for ranking.
 
-    Priority:
+    For ordinary/current-information queries, source/article dates can come
+    from publishedDate, pubdate, title, content, or URL.
 
-        1. publishedDate
-        2. pubdate
-        3. title
-        4. content
-        5. URL
+    For latest-judgment queries, generic content dates are not treated as
+    judgment dates. A judgment-specific date in the title, URL, or content
+    is preferred; source-level publication metadata is only a fallback.
     """
+
+    title = (result.get("title") or "").strip()
+    content = (result.get("content") or "").strip()
+    url = (result.get("url") or "").strip()
+
+    if latest_judgment:
+        parsed = _find_judgment_date_in_text(title)
+
+        if parsed:
+            return (
+                parsed,
+                "title_judgment",
+                0.95,
+            )
+
+        parsed = _find_judgment_date_in_text(url)
+
+        if parsed:
+            return (
+                parsed,
+                "url_judgment",
+                0.90,
+            )
+
+        parsed = _find_judgment_date_in_text(content)
+
+        if parsed:
+            return (
+                parsed,
+                "content_judgment",
+                0.80,
+            )
 
     published_date = result.get("publishedDate")
 
@@ -446,38 +660,36 @@ def _extract_result_date(
                 0.95,
             )
 
-    title = (result.get("title") or "").strip()
+    # Generic title/URL dates are only treated as source dates for ordinary
+    # current-information queries. For latest-judgment queries, a date must
+    # be explicitly tied to the legal event.
+    if not latest_judgment:
+        parsed = _find_date_in_text(title)
 
-    parsed = _find_date_in_text(title)
+        if parsed:
+            return (
+                parsed,
+                "title",
+                0.90,
+            )
 
-    if parsed:
-        return (
-            parsed,
-            "title",
-            0.90,
-        )
+        parsed = _find_date_in_text(url)
 
-    content = (result.get("content") or "").strip()
+        if parsed:
+            return (
+                parsed,
+                "url",
+                0.55,
+            )
 
-    parsed = _find_date_in_text(content)
+        parsed = _find_date_in_text(content)
 
-    if parsed:
-        return (
-            parsed,
-            "content",
-            0.70,
-        )
-
-    url = (result.get("url") or "").strip()
-
-    parsed = _find_date_in_text(url)
-
-    if parsed:
-        return (
-            parsed,
-            "url",
-            0.55,
-        )
+        if parsed:
+            return (
+                parsed,
+                "content",
+                0.70,
+            )
 
     return (
         None,
@@ -587,6 +799,49 @@ def _query_relevance(
     )
 
     return min(score, 1.0)
+
+
+def _topic_relevance(
+    query: str,
+    result: dict,
+) -> float:
+    """
+    Estimate relevance to the substantive legal topic.
+
+    Generic retrieval words such as "latest", "Supreme Court", and
+    "judgment" are removed so they do not make every recent court document
+    look highly relevant to the actual topic.
+    """
+
+    topic_tokens = {
+        token
+        for token in _tokenize(query)
+        if token not in QUERY_TOPIC_STOPWORDS
+    }
+
+    if not topic_tokens:
+        return 0.0
+
+    title_tokens = _tokenize(
+        result.get("title", "")
+    )
+
+    content_tokens = _tokenize(
+        result.get("content", "")
+    )
+
+    matched_score = 0.0
+
+    for token in topic_tokens:
+        if token in title_tokens:
+            matched_score += 1.0
+        elif token in content_tokens:
+            matched_score += 0.60
+
+    return min(
+        matched_score / len(topic_tokens),
+        1.0,
+    )
 
 
 # ============================================================
@@ -1006,7 +1261,20 @@ def _score_result(
 ) -> dict:
     """Attach all ranking signals to a result."""
 
+    wants_current = _wants_current_information(
+        query,
+    )
+
+    wants_latest_judgment = _wants_latest_judgment(
+        query,
+    )
+
     relevance = _query_relevance(
+        query,
+        result,
+    )
+
+    topic_relevance = _topic_relevance(
         query,
         result,
     )
@@ -1025,7 +1293,10 @@ def _score_result(
     )
 
     result_date, date_source, date_confidence = (
-        _extract_result_date(result)
+        _extract_result_date(
+            result,
+            latest_judgment=wants_latest_judgment,
+        )
     )
 
     freshness = _freshness_score(
@@ -1050,27 +1321,34 @@ def _score_result(
         source_type,
     )
 
-    wants_current = _wants_current_information(
-        query,
-    )
-
-    wants_latest_judgment = _wants_latest_judgment(
-        query,
-    )
-
     # ========================================================
     # NORMAL QUERY
     # ========================================================
 
     if not wants_current:
 
-        final_score = (
-            0.45 * relevance
-            + 0.30 * authority
-            + 0.15 * content_quality
-            + 0.05 * primary_source
-            + 0.05 * legal_event
-        )
+        # Legal questions need a stronger preference for authoritative
+        # primary sources (official legislation/court/government sources)
+        # while still keeping topical relevance as the largest signal.
+        if _is_legal_query(query):
+
+            final_score = (
+                0.35 * relevance
+                + 0.25 * authority
+                + 0.15 * content_quality
+                + 0.20 * primary_source
+                + 0.05 * legal_event
+            )
+
+        else:
+
+            final_score = (
+                0.45 * relevance
+                + 0.30 * authority
+                + 0.15 * content_quality
+                + 0.05 * primary_source
+                + 0.05 * legal_event
+            )
 
     # ========================================================
     # CURRENT INFORMATION QUERY
@@ -1094,21 +1372,30 @@ def _score_result(
 
     else:
 
+        # Topic relevance is explicit here so that a recent official court
+        # document cannot outrank a genuinely topical result merely because
+        # it contains generic words such as "Supreme Court" and "judgment".
         final_score = (
             0.30 * relevance
-            + 0.20 * authority
-            + 0.10 * content_quality
-            + 0.05 * current_intent
-            + 0.20 * freshness
-            + 0.10 * legal_event
+            + 0.15 * topic_relevance
+            + 0.18 * authority
+            + 0.08 * content_quality
+            + 0.04 * current_intent
+            + 0.15 * freshness
+            + 0.05 * legal_event
             + 0.05 * primary_source
         )
 
-        # Commentary is slightly penalized only for queries
-        # explicitly asking for a latest judgment/ruling/order.
         final_score -= (
             0.05 * commentary
         )
+
+        # Completely topic-mismatched results are still allowed to pass
+        # through the pipeline, but are strongly demoted.
+        if topic_relevance == 0.0:
+            final_score *= 0.45
+        elif topic_relevance < 0.30:
+            final_score *= 0.75
 
     final_score = max(
         0.0,
@@ -1123,6 +1410,10 @@ def _score_result(
     ranked["ranking"] = {
         "relevance_score": round(
             relevance,
+            4,
+        ),
+        "topic_relevance_score": round(
+            topic_relevance,
             4,
         ),
         "authority_score": round(
