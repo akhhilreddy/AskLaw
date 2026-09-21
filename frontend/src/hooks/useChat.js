@@ -16,6 +16,10 @@ import {
 } from "../services/conversationService";
 
 
+// =========================================================
+// HOOK
+// =========================================================
+
 export default function useChat() {
 
   const [conversation, setConversation] =
@@ -25,11 +29,14 @@ export default function useChat() {
       messages: [],
     });
 
+
   const [conversations, setConversations] =
     useState([]);
 
+
   const [isTyping, setIsTyping] =
     useState(false);
+
 
   const [isStreaming, setIsStreaming] =
     useState(false);
@@ -81,6 +88,7 @@ export default function useChat() {
 
     let conversationId =
       conversation.id;
+
 
     try {
 
@@ -177,8 +185,7 @@ export default function useChat() {
       // -----------------------------------------------
 
       if (
-        conversation.messages
-          .length === 0
+        conversation.messages.length === 0
       ) {
 
         const titleResponse =
@@ -221,16 +228,27 @@ export default function useChat() {
       let assistantCreated =
         false;
 
+
       const assistantId =
         crypto.randomUUID();
+
 
       let assistantResponse =
         "";
 
+
       let assistantSources =
         [];
 
-      let assistantRoute = null;
+
+      let assistantRoute =
+        null;
+
+
+      // NEW:
+      // Store verification metadata
+      let assistantVerification =
+        null;
 
 
       // -----------------------------------------------
@@ -248,7 +266,9 @@ export default function useChat() {
         assistantCreated =
           true;
 
+
         setIsTyping(false);
+
 
         setConversation(
           (prev) => ({
@@ -259,13 +279,22 @@ export default function useChat() {
 
               {
                 id: assistantId,
+
                 role: "assistant",
+
                 content:
                   assistantResponse,
+
                 sources:
                   assistantSources,
+
                 route:
                   assistantRoute,
+
+                // NEW
+                verification:
+                  assistantVerification,
+
                 isComplete: false,
               },
 
@@ -302,6 +331,10 @@ export default function useChat() {
 
                         route:
                           assistantRoute,
+
+                        // NEW
+                        verification:
+                          assistantVerification,
                       }
                     : msg
               ),
@@ -361,11 +394,52 @@ export default function useChat() {
           }
 
 
-          if (event.type === "route") {
-            assistantRoute = event.route;
+          // -------------------------------------------
+          // ROUTE EVENT
+          // -------------------------------------------
+
+          if (
+            event.type === "route"
+          ) {
+
+            assistantRoute =
+              event.route;
+
             createAssistantMessage();
+
             updateAssistantMessage();
+
             return;
+
+          }
+
+
+          // -------------------------------------------
+          // VERIFICATION EVENT
+          // -------------------------------------------
+
+          if (
+            event.type === "verification"
+          ) {
+
+            assistantVerification = {
+              grounding_score:
+                event.grounding_score ?? 0,
+
+              summary:
+                event.summary || {},
+
+              claims:
+                event.claims || [],
+            };
+
+
+            createAssistantMessage();
+
+            updateAssistantMessage();
+
+            return;
+
           }
 
 
@@ -449,6 +523,7 @@ export default function useChat() {
           error
         );
 
+
         setConversation(
           (prev) => ({
             ...prev,
@@ -460,14 +535,19 @@ export default function useChat() {
                 id:
                   crypto.randomUUID(),
 
-                role: "assistant",
+                role:
+                  "assistant",
 
                 content:
                   "Sorry, something went wrong.",
 
                 sources: [],
 
-                isComplete: true,
+                verification:
+                  null,
+
+                isComplete:
+                  true,
               },
 
             ],
@@ -476,6 +556,7 @@ export default function useChat() {
         );
 
       }
+
 
     } finally {
 
@@ -516,13 +597,16 @@ export default function useChat() {
 
       setIsStreaming(false);
 
+
       try {
 
         const newConversation =
           await createConversationApi();
 
         setConversation({
-          id: newConversation.id,
+
+          id:
+            newConversation.id,
 
           title:
             newConversation.title ||
@@ -531,7 +615,9 @@ export default function useChat() {
           messages:
             newConversation.messages ||
             [],
+
         });
+
 
         await loadConversations();
 
@@ -561,12 +647,14 @@ export default function useChat() {
 
     setIsStreaming(false);
 
+
     try {
 
       const loadedConversation =
         await getConversation(
           conversationId
         );
+
 
       if (
         !loadedConversation?.id
@@ -580,11 +668,13 @@ export default function useChat() {
 
       }
 
+
       const loadedMessages =
         (
           loadedConversation.messages ||
           []
         ).map((message) => ({
+
           ...message,
 
           id:
@@ -594,8 +684,15 @@ export default function useChat() {
           sources:
             message.sources || [],
 
-          isComplete: true,
+          // NEW
+          verification:
+            message.verification || null,
+
+          isComplete:
+            true,
+
         }));
+
 
       setConversation({
 
@@ -610,6 +707,7 @@ export default function useChat() {
           loadedMessages,
 
       });
+
 
     } catch (error) {
 
@@ -636,6 +734,7 @@ export default function useChat() {
           conversationId
         );
 
+
         setConversations(
           (prev) =>
             prev.filter(
@@ -644,6 +743,7 @@ export default function useChat() {
                 conversationId
             )
         );
+
 
         if (
           conversation.id ===
@@ -656,13 +756,20 @@ export default function useChat() {
 
           setIsStreaming(false);
 
+
           setConversation({
+
             id: null,
-            title: "New Chat",
+
+            title:
+              "New Chat",
+
             messages: [],
+
           });
 
         }
+
 
       } catch (error) {
 
@@ -695,6 +802,7 @@ export default function useChat() {
             conversationId,
             title
           );
+
 
         const newTitle =
           result?.title ||
@@ -734,6 +842,7 @@ export default function useChat() {
                 }
               : prev
         );
+
 
       } catch (error) {
 
