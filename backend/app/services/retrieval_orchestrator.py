@@ -74,6 +74,18 @@ CURRENT_PATTERNS = (
     r"\blatest developments?\b",
 )
 
+RECENT_DEVELOPMENT_PATTERNS = (
+    r"\brecent developments?\b",
+    r"\blatest developments?\b",
+    r"\brecent legal developments?\b",
+    r"\blatest legal developments?\b",
+    r"\bnew legal developments?\b",
+    r"\brecent changes?\b",
+    r"\blatest changes?\b",
+    r"\brecent legal changes?\b",
+    r"\blatest legal changes?\b",
+)
+
 LEGAL_EVENT_PATTERNS = (
     r"\bjudgment\b",
     r"\bjudgement\b",
@@ -107,6 +119,53 @@ def _wants_current_web_research(
         )
         for pattern in CURRENT_PATTERNS
     )
+
+
+def _wants_recent_legal_developments(
+    query: str,
+) -> bool:
+    """
+    Return True when the query explicitly asks for recent/latest
+    developments or changes in a legal topic.
+
+    This is separate from `_wants_current_legal_event` because a
+    development query may not contain words such as judgment,
+    ruling, order, or case.
+    """
+
+    query_lower = query.lower()
+
+    return any(
+        re.search(
+            pattern,
+            query_lower,
+        )
+        for pattern in RECENT_DEVELOPMENT_PATTERNS
+    )
+
+
+def _extract_article_reference(
+    query: str,
+) -> str | None:
+    """
+    Extract an Article reference such as:
+
+        Article 32
+        article 226
+
+    Returns the article number as a string when present.
+    """
+
+    match = re.search(
+        r"\barticle\s+(\d+[A-Za-z]?)\b",
+        query,
+        flags=re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    return match.group(1)
 
 
 def _wants_current_legal_event(
@@ -348,8 +407,13 @@ def _build_targeted_web_queries(
 
     The original user query is always preserved.
 
-    For current/recent legal-event queries, additional focused
-    queries are generated around the extracted legal topic.
+    Special handling exists for:
+        1. latest/recent judgments, rulings, and orders
+        2. recent/latest legal developments or changes
+        3. Article-specific recent-development questions
+
+    The goal is to search for legal events and primary material,
+    rather than merely recent educational content.
     """
 
     base_query = query.strip()
@@ -358,48 +422,172 @@ def _build_targeted_web_queries(
         base_query
     ]
 
-    if not _wants_current_legal_event(
+    wants_current_event = _wants_current_legal_event(
         base_query
+    )
+
+    wants_recent_developments = _wants_recent_legal_developments(
+        base_query
+    )
+
+    if not (
+        wants_current_event
+        or wants_recent_developments
     ):
         return queries
 
     year = _current_year()
 
+    article_number = _extract_article_reference(
+        base_query
+    )
+
     topic = _extract_legal_topic(
         base_query
     )
 
-    if not topic:
-        topic = base_query
+    # ========================================================
+    # ARTICLE-SPECIFIC CURRENT RESEARCH
+    # ========================================================
 
-    # Focused general searches.
-    queries.append(
-        f"latest Supreme Court judgment "
-        f"{topic} India {year}"
-    )
+    if article_number:
 
-    queries.append(
-        f"Supreme Court {topic} ruling "
-        f"India {year}"
-    )
+        article_queries = [
+            (
+                f"Article {article_number} "
+                f"Supreme Court recent judgment India {year}"
+            ),
+            (
+                f"Article {article_number} "
+                f"Supreme Court recent order India {year}"
+            ),
+            (
+                f"Article {article_number} "
+                f"recent constitutional development India {year}"
+            ),
+            (
+                f'site:api.sci.gov.in '
+                f'"Article {article_number}" {year}'
+            ),
+            (
+                f'site:sci.gov.in '
+                f'"Article {article_number}" {year}'
+            ),
+        ]
 
-    queries.append(
-        f"Supreme Court {topic} judgment "
-        f"India {year}"
-    )
+        # For an explicit latest-judgment request, add a tighter
+        # judgment-focused query.
+        if _wants_current_legal_event(base_query):
 
-    # Primary-source searches.
-    queries.append(
-        f"site:api.sci.gov.in "
-        f"{topic} Supreme Court {year}"
-    )
+            article_queries.insert(
+                0,
+                (
+                    f"latest Supreme Court judgment "
+                    f"Article {article_number} India {year}"
+                ),
+            )
 
-    queries.append(
-        f"site:sci.gov.in "
-        f"{topic} Supreme Court {year}"
-    )
+        queries.extend(
+            article_queries
+        )
 
-    # Preserve order and remove duplicates.
+    # ========================================================
+    # TOPIC-BASED CURRENT LEGAL RESEARCH
+    # ========================================================
+
+    else:
+
+        if not topic:
+            topic = base_query
+
+        if _wants_current_legal_event(base_query):
+
+            queries.append(
+                f"latest Supreme Court judgment "
+                f"{topic} India {year}"
+            )
+
+            queries.append(
+                f"Supreme Court {topic} ruling "
+                f"India {year}"
+            )
+
+            queries.append(
+                f"Supreme Court {topic} judgment "
+                f"India {year}"
+            )
+
+        if wants_recent_developments:
+
+            queries.append(
+                f"Supreme Court recent legal developments "
+                f"{topic} India {year}"
+            )
+
+            queries.append(
+                f"Supreme Court recent cases "
+                f"{topic} India {year}"
+            )
+
+            queries.append(
+                f"Supreme Court recent orders "
+                f"{topic} India {year}"
+            )
+
+        queries.append(
+            f"site:api.sci.gov.in "
+            f"{topic} Supreme Court {year}"
+        )
+
+        queries.append(
+            f"site:sci.gov.in "
+            f"{topic} Supreme Court {year}"
+        )
+
+    # ========================================================
+    # LEGAL-REPORTING FALLBACKS FOR DEVELOPMENT QUERIES
+    # ========================================================
+
+    if wants_recent_developments:
+
+        if article_number:
+
+            queries.append(
+                (
+                    f'site:livelaw.in '
+                    f'"Article {article_number}" '
+                    f'Supreme Court {year}'
+                )
+            )
+
+            queries.append(
+                (
+                    f'site:barandbench.com '
+                    f'"Article {article_number}" '
+                    f'Supreme Court {year}'
+                )
+            )
+
+        elif topic:
+
+            queries.append(
+                (
+                    f'site:livelaw.in '
+                    f'{topic} Supreme Court {year}'
+                )
+            )
+
+            queries.append(
+                (
+                    f'site:barandbench.com '
+                    f'{topic} Supreme Court {year}'
+                )
+            )
+
+    # ========================================================
+    # PRESERVE ORDER + DEDUPLICATE
+    # ========================================================
+
     seen: set[str] = set()
     unique_queries: list[str] = []
 
