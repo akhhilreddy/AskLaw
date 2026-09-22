@@ -38,6 +38,7 @@
 
 import asyncio
 import json
+import logging
 
 
 from groq import Groq
@@ -72,6 +73,7 @@ from app.services.claim_verifier import (
 # =========================================================
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 # =========================================================
@@ -386,20 +388,12 @@ def stream_response(
         )
 
     except Exception as exc:
-
-        print()
-        print("=" * 60)
-        print("ASKLAW RETRIEVAL ERROR")
-        print("=" * 60)
-        print(
-            str(exc)
-        )
-        print("=" * 60)
+        logger.exception("Research retrieval failed")
 
         error_event = {
             "type": "error",
             "content": (
-                f"Retrieval error: {str(exc)}"
+                "Research retrieval failed. Please try again."
             ),
         }
 
@@ -431,36 +425,12 @@ def stream_response(
         [],
     )
 
-    # =====================================================
-    # DEBUG
-    # =====================================================
-
-    print()
-    print("=" * 60)
-    print("ASKLAW AI PIPELINE")
-    print("=" * 60)
-
-    print(
-        "QUERY:",
-        user_message,
-    )
-
-    print(
-        "ROUTE:",
+    logger.info(
+        "Research retrieval completed route=%s rag_results=%s web_results=%s",
         route,
-    )
-
-    print(
-        "RAG RESULTS:",
         len(rag_results),
-    )
-
-    print(
-        "WEB RESULTS:",
         len(web_results),
     )
-
-    print("=" * 60)
 
     # =====================================================
     # BUILD STRUCTURED EVIDENCE
@@ -475,20 +445,12 @@ def stream_response(
         )
 
     except Exception as exc:
-
-        print()
-        print("=" * 60)
-        print("ASKLAW EVIDENCE ERROR")
-        print("=" * 60)
-        print(
-            str(exc)
-        )
-        print("=" * 60)
+        logger.exception("Evidence processing failed")
 
         error_event = {
             "type": "error",
             "content": (
-                f"Evidence processing error: {str(exc)}"
+                "Evidence processing failed. Please try again."
             ),
         }
 
@@ -500,15 +462,6 @@ def stream_response(
         )
 
         return
-
-    print()
-    print(
-        "EVIDENCE BUNDLE:",
-        evidence_bundle.get(
-            "counts",
-            {},
-        ),
-    )
 
     # =====================================================
     # BUILD GROUNDED LEGAL PROMPT
@@ -525,20 +478,12 @@ def stream_response(
         )
 
     except Exception as exc:
-
-        print()
-        print("=" * 60)
-        print("ASKLAW PROMPT ERROR")
-        print("=" * 60)
-        print(
-            str(exc)
-        )
-        print("=" * 60)
+        logger.exception("Research prompt construction failed")
 
         error_event = {
             "type": "error",
             "content": (
-                f"Prompt error: {str(exc)}"
+                "The research prompt could not be prepared. Please try again."
             ),
         }
 
@@ -567,28 +512,6 @@ def stream_response(
         rag_sources
         + web_sources
     )
-
-    # =====================================================
-    # DEBUG SOURCES
-    # =====================================================
-
-    print()
-    print(
-        "BACKEND SOURCES:",
-        len(sources),
-    )
-
-    for index, source in enumerate(
-        sources,
-        start=1,
-    ):
-
-        print(
-            f"SOURCE {index}:",
-            source,
-        )
-
-    print("=" * 60)
 
     # =====================================================
     # BUILD GROQ MESSAGES
@@ -637,20 +560,12 @@ def stream_response(
         )
 
     except Exception as exc:
-
-        print()
-        print("=" * 60)
-        print("ASKLAW GROQ ERROR")
-        print("=" * 60)
-        print(
-            str(exc)
-        )
-        print("=" * 60)
+        logger.exception("AI provider request failed")
 
         error_event = {
             "type": "error",
             "content": (
-                f"AI service error: {str(exc)}"
+                "The AI service is temporarily unavailable. Please try again."
             ),
         }
 
@@ -703,20 +618,12 @@ def stream_response(
             )
 
     except Exception as exc:
-
-        print()
-        print("=" * 60)
-        print("ASKLAW STREAM ERROR")
-        print("=" * 60)
-        print(
-            str(exc)
-        )
-        print("=" * 60)
+        logger.exception("AI response streaming failed")
 
         error_event = {
             "type": "error",
             "content": (
-                f"Streaming error: {str(exc)}"
+                "The response stream was interrupted. Please try again."
             ),
         }
 
@@ -736,15 +643,6 @@ def stream_response(
     generated_answer = "".join(
         generated_answer_parts
     ).strip()
-
-    print()
-    print("=" * 60)
-    print("ASKLAW GENERATED ANSWER")
-    print("=" * 60)
-    print(
-        generated_answer
-    )
-    print("=" * 60)
 
     # =====================================================
     # CLAIM VERIFICATION
@@ -782,15 +680,7 @@ def stream_response(
             )
 
         except Exception as exc:
-
-            print()
-            print("=" * 60)
-            print("ASKLAW VERIFICATION ERROR")
-            print("=" * 60)
-            print(
-                str(exc)
-            )
-            print("=" * 60)
+            logger.exception("Claim verification failed")
 
             verification = {
                 "claims": [],
@@ -805,20 +695,6 @@ def stream_response(
             }
 
             grounding_score = 0.0
-
-    print()
-    print(
-        "VERIFICATION SUMMARY:",
-        verification.get(
-            "summary",
-            {},
-        ),
-    )
-
-    print(
-        "GROUNDING SCORE:",
-        grounding_score,
-    )
 
     # =====================================================
     # SEND BACKEND SOURCE METADATA
@@ -878,39 +754,10 @@ def stream_response(
         + "\n"
     )
 
-    # =====================================================
-    # DEBUG COMPLETE
-    # =====================================================
-
-    print()
-    print("=" * 60)
-    print("ASKLAW AI RESPONSE COMPLETE")
-    print("=" * 60)
-
-    print(
-        "ROUTE:",
+    logger.info(
+        "AI response completed route=%s sources=%s claims=%s grounding_score=%s",
         route,
-    )
-
-    print(
-        "SOURCES:",
         len(sources),
-    )
-
-    print(
-        "CLAIMS:",
-        verification.get(
-            "summary",
-            {},
-        ).get(
-            "total_claims",
-            0,
-        ),
-    )
-
-    print(
-        "GROUNDING SCORE:",
+        verification.get("summary", {}).get("total_claims", 0),
         grounding_score,
     )
-
-    print("=" * 60)

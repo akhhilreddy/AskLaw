@@ -548,7 +548,9 @@ export default function useChat({
                   "assistant",
 
                 content:
-                  "Sorry, something went wrong.",
+                  error.message === "Failed to fetch"
+                    ? "Unable to reach AskLAW. Check your connection and try again."
+                    : error.message || "Sorry, something went wrong.",
 
                 sources: [],
 

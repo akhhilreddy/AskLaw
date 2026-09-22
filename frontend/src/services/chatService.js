@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { API_BASE_URL } from "./api";
 
 
 let controller = null;
@@ -34,7 +34,7 @@ export const streamMessage = async (
   // GET AUTH TOKEN
   // -------------------------------------------------------
 
-  const token = localStorage.getItem(
+  let token = localStorage.getItem(
     "token"
   );
 
@@ -50,9 +50,19 @@ export const streamMessage = async (
   // SEND REQUEST
   // -------------------------------------------------------
 
-  const response = await fetch(
-    "http://localhost:8000/chat/stream",
-    {
+  let timedOut = false;
+  let timeoutId;
+
+  const armTimeout = () => {
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller?.abort();
+    }, 120000);
+  };
+
+  const request = () =>
+    fetch(`${API_BASE_URL}/chat/stream`, {
       method: "POST",
 
       credentials: "include",
@@ -75,8 +85,40 @@ export const streamMessage = async (
             }
           : {}),
       }),
+    });
+
+  armTimeout();
+
+  let response;
+
+  try {
+    response = await request();
+
+    if (response.status === 401) {
+      try {
+        const refreshResponse = await api.post("/auth/refresh");
+        token = refreshResponse.data.access_token;
+        localStorage.setItem("token", token);
+        response = await request();
+      } catch (refreshError) {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+        throw new Error("Your session expired. Please sign in again.", {
+          cause: refreshError,
+        });
+      }
     }
-  );
+  } catch (error) {
+    window.clearTimeout(timeoutId);
+
+    if (timedOut) {
+      throw new Error("The research request timed out. Please try again.", {
+        cause: error,
+      });
+    }
+
+    throw error;
+  }
 
 
   // -------------------------------------------------------
@@ -84,10 +126,15 @@ export const streamMessage = async (
   // -------------------------------------------------------
 
   if (!response.ok) {
+    window.clearTimeout(timeoutId);
+    const body = await response.json().catch(() => null);
 
-    throw new Error(
-      "Failed to stream response"
-    );
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+
+    throw new Error(body?.detail || "The research request could not be completed.");
 
   }
 
@@ -116,8 +163,24 @@ export const streamMessage = async (
 
   while (true) {
 
-    const { done, value } =
-      await reader.read();
+    let readResult;
+
+    try {
+      readResult = await reader.read();
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      controller = null;
+
+      if (timedOut) {
+        throw new Error("The research request timed out. Please try again.", {
+          cause: error,
+        });
+      }
+
+      throw error;
+    }
+
+    const { done, value } = readResult;
 
 
     // -----------------------------------------------------
@@ -129,6 +192,8 @@ export const streamMessage = async (
       break;
 
     }
+
+    armTimeout();
 
 
     // -----------------------------------------------------
@@ -233,6 +298,7 @@ export const streamMessage = async (
   // CLEAR CONTROLLER
   // -------------------------------------------------------
 
+  window.clearTimeout(timeoutId);
   controller = null;
 
 };

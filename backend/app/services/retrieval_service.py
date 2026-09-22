@@ -8,6 +8,8 @@ from qdrant_client.models import (
     MatchValue,
 )
 
+from app.core.config import settings
+
 from app.services.vector_service import (
     COLLECTION_NAME,
     create_embedding,
@@ -18,7 +20,7 @@ from app.services.vector_service import (
 # CONFIG
 # ============================================================
 
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = settings.QDRANT_URL
 
 DEFAULT_LIMIT = 5
 
@@ -30,7 +32,8 @@ SEMANTIC_CANDIDATES = 50
 # ============================================================
 
 qdrant_client = QdrantClient(
-    url=QDRANT_URL
+    url=QDRANT_URL,
+    check_compatibility=False,
 )
 
 
@@ -741,27 +744,12 @@ def retrieve_relevant_chunks(
     if not user_id:
         return []
 
-    print()
-    print("=" * 50)
-    print("RETRIEVAL DEBUG")
-    print("=" * 50)
-
-    print(
-        "QUERY:",
-        query
-    )
-
     # ========================================================
     # ARTICLE DETECTION
     # ========================================================
 
     article_number = extract_article_number(
         query
-    )
-
-    print(
-        "ARTICLE DETECTED:",
-        article_number
     )
 
     # ========================================================
@@ -772,16 +760,6 @@ def retrieve_relevant_chunks(
 
     if article_number:
 
-        print()
-        print(
-            "ARTICLE SEARCH"
-        )
-
-        print(
-            "ARTICLE:",
-            article_number
-        )
-
         exact_chunks = find_exact_article(
 
             article_number=article_number,
@@ -790,18 +768,6 @@ def retrieve_relevant_chunks(
 
             document_id=document_id,
         )
-
-        print(
-            "EXACT ARTICLE CHUNKS FOUND:",
-            len(exact_chunks)
-        )
-
-        for chunk in exact_chunks:
-
-            print(
-                f"PAGE={chunk.get('page_number')} "
-                f"CHUNK={chunk.get('chunk_index')}"
-            )
 
     # ========================================================
     # EXACT ARTICLE FOUND
@@ -813,35 +779,6 @@ def retrieve_relevant_chunks(
 
         final_results = (
             exact_chunks[:limit]
-        )
-
-        print()
-        print(
-            "=" * 50
-        )
-
-        print(
-            "EXACT ARTICLE RETRIEVAL"
-        )
-
-        print(
-            "=" * 50
-        )
-
-        for index, chunk in enumerate(
-            final_results,
-            start=1
-        ):
-
-            print(
-                f"RESULT {index}: "
-                f"PAGE={chunk.get('page_number')} "
-                f"CHUNK={chunk.get('chunk_index')} "
-                f"ARTICLE_MATCH=True"
-            )
-
-        print(
-            "=" * 50
         )
 
         return final_results
@@ -955,41 +892,6 @@ def retrieve_relevant_chunks(
 
     final_results = (
         semantic_results[:limit]
-    )
-
-    # ========================================================
-    # DEBUG
-    # ========================================================
-
-    print()
-    print(
-        "=" * 50
-    )
-
-    print(
-        "SEMANTIC FALLBACK"
-    )
-
-    print(
-        "=" * 50
-    )
-
-    for index, result in enumerate(
-        final_results,
-        start=1
-    ):
-
-        print(
-            f"RESULT {index}: "
-            f"PAGE={result.get('page_number')} "
-            f"CHUNK={result.get('chunk_index')} "
-            f"SEMANTIC={result.get('semantic_score')} "
-            f"RETRIEVAL={result.get('retrieval_score')} "
-            f"ARTICLE_MATCH={result.get('article_match')}"
-        )
-
-    print(
-        "=" * 50
     )
 
     return final_results

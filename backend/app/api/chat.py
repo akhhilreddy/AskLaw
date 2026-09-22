@@ -59,6 +59,18 @@ def chat_stream(
                 detail="Document not found",
             )
 
+        if document.get("status") in {"uploaded", "processing"}:
+            raise HTTPException(
+                status_code=409,
+                detail="This document is still being indexed.",
+            )
+
+        if document.get("status") == "failed":
+            raise HTTPException(
+                status_code=409,
+                detail="Document indexing failed.",
+            )
+
     # -----------------------------------------------------
     # STREAM RESPONSE
     # -----------------------------------------------------

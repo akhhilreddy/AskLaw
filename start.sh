@@ -2,6 +2,33 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+PID_FILE="$PROJECT_ROOT/.asklaw.pids"
+SHUTTING_DOWN=0
+
+cleanup() {
+  if [ "$SHUTTING_DOWN" -eq 1 ]; then
+    return
+  fi
+
+  SHUTTING_DOWN=1
+  echo ""
+  echo "Stopping AskLaw local services..."
+
+  for pid in "${FASTAPI_PID:-}" "${CELERY_PID:-}" "${MCP_PID:-}" "${FRONTEND_PID:-}"; do
+    if [ -n "$pid" ]; then
+      pkill -P "$pid" 2>/dev/null || true
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+
+  wait "${FASTAPI_PID:-}" "${CELERY_PID:-}" "${MCP_PID:-}" "${FRONTEND_PID:-}" 2>/dev/null || true
+  rm -f "$PID_FILE"
+
+  cd "$PROJECT_ROOT"
+  docker compose down
+}
+
+trap cleanup EXIT INT TERM
 
 echo "============================================================"
 echo "ASKLAW STARTUP"
@@ -38,6 +65,13 @@ cd "$PROJECT_ROOT/frontend"
 npm run dev > /tmp/asklaw-frontend.log 2>&1 &
 FRONTEND_PID=$!
 
+{
+  echo "fastapi $FASTAPI_PID"
+  echo "celery $CELERY_PID"
+  echo "mcp $MCP_PID"
+  echo "frontend $FRONTEND_PID"
+} > "$PID_FILE"
+
 echo ""
 echo "============================================================"
 echo "ASKLAW IS STARTING"
@@ -56,12 +90,5 @@ echo "  Frontend → /tmp/asklaw-frontend.log"
 echo ""
 echo "Press Ctrl+C to stop local services."
 echo "============================================================"
-
-trap '
-echo "";
-echo "Stopping AskLaw local services...";
-kill $FASTAPI_PID $CELERY_PID $MCP_PID $FRONTEND_PID 2>/dev/null || true;
-exit 0
-' INT TERM
 
 wait

@@ -17,4 +17,6 @@ build/
 .vscode/
 
 # Logs
-*.logbackend.zip
+*.log
+.asklaw.pids
+backend.zip

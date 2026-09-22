@@ -33,9 +33,12 @@ Flow:
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import date
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from app.services.query_router import (
     QueryRoute,
@@ -813,10 +816,7 @@ async def retrieve_web(
             search_result,
             Exception,
         ):
-            print(
-                "WEB SEARCH ERROR:",
-                repr(search_result),
-            )
+            logger.warning("A targeted web search failed: %s", type(search_result).__name__)
             continue
 
         normalized = _normalize_web_results(
@@ -832,25 +832,6 @@ async def retrieve_web(
         combined_candidates
     )
 
-    print(
-        f"WEB TARGETED QUERIES: "
-        f"{len(targeted_queries)}"
-    )
-
-    for index, search_query in enumerate(
-        targeted_queries,
-        start=1,
-    ):
-        print(
-            f"[WEB QUERY #{index}] "
-            f"{search_query}"
-        )
-
-    print(
-        f"WEB CANDIDATES: "
-        f"{len(deduplicated)}"
-    )
-
     # Rank.
     ranked = rank_web_sources(
         query=query,
@@ -858,48 +839,12 @@ async def retrieve_web(
         limit=limit,
     )
 
-    print(
-        f"WEB RANKED RESULTS: "
-        f"{len(ranked)}"
+    logger.info(
+        "Web retrieval completed targeted_queries=%s candidates=%s results=%s",
+        len(targeted_queries),
+        len(deduplicated),
+        len(ranked),
     )
-
-    for index, item in enumerate(
-        ranked,
-        start=1,
-    ):
-        ranking = item.get(
-            "ranking",
-            {},
-        )
-
-        date_metadata = item.get(
-            "date_metadata",
-            {},
-        )
-
-        source_metadata = item.get(
-            "source_metadata",
-            {},
-        )
-
-        print(
-            f"[WEB #{index}] "
-            f"{item.get('title', '')} "
-            f"| score="
-            f"{ranking.get('final_score')} "
-            f"| authority="
-            f"{ranking.get('authority_score')} "
-            f"| relevance="
-            f"{ranking.get('relevance_score')} "
-            f"| freshness="
-            f"{ranking.get('freshness_score')} "
-            f"| event="
-            f"{ranking.get('legal_event_score')} "
-            f"| type="
-            f"{source_metadata.get('source_type')} "
-            f"| date="
-            f"{date_metadata.get('date')}"
-        )
 
     return ranked
 
@@ -940,33 +885,6 @@ async def retrieve_for_query(
         else str(route)
     )
 
-    print(
-        "\n"
-        + "=" * 60
-    )
-
-    print(
-        "ASKLAW RETRIEVAL ORCHESTRATOR"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    print(
-        "QUERY:",
-        query,
-    )
-
-    print(
-        "ROUTE:",
-        route_value,
-    )
-
-    print(
-        "=" * 60
-    )
-
     # ========================================================
     # RAG
     # ========================================================
@@ -979,11 +897,6 @@ async def retrieve_for_query(
             user_id,
             document_id,
             rag_limit,
-        )
-
-        print(
-            f"RAG RESULTS: "
-            f"{len(rag_results)}"
         )
 
         return {
@@ -1001,11 +914,6 @@ async def retrieve_for_query(
         web_results = await retrieve_web(
             query,
             web_limit,
-        )
-
-        print(
-            f"WEB RESULTS: "
-            f"{len(web_results)}"
         )
 
         return {
@@ -1038,16 +946,6 @@ async def retrieve_for_query(
                 rag_task,
                 web_task,
             )
-        )
-
-        print(
-            f"RAG RESULTS: "
-            f"{len(rag_results)}"
-        )
-
-        print(
-            f"WEB RESULTS: "
-            f"{len(web_results)}"
         )
 
         return {

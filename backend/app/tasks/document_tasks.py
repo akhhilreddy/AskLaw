@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from bson import ObjectId
@@ -11,14 +12,21 @@ from app.services.vector_service import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 # =========================================================
 # INDEX DOCUMENT IN BACKGROUND
 # =========================================================
 
 @celery_app.task(
-    name="app.tasks.document_tasks.index_document"
+    bind=True,
+    name="app.tasks.document_tasks.index_document",
+    max_retries=2,
+    default_retry_delay=5,
 )
 def index_document(
+    self,
     document_id: str,
     user_id: str,
 ):
@@ -128,19 +136,27 @@ def index_document(
 
             indexed_count += 1
 
-    except Exception:
+    except Exception as exc:
+        logger.exception(
+            "Document indexing attempt failed for document_id=%s (attempt %s of %s)",
+            document_id,
+            self.request.retries + 1,
+            self.max_retries + 1,
+        )
+
+        if self.request.retries < self.max_retries:
+            raise self.retry(
+                exc=exc,
+                countdown=5 * (self.request.retries + 1),
+            )
+
         document_collection.update_one(
             {
                 "_id": object_id,
                 "user_id": user_id,
             },
-            {
-                "$set": {
-                    "status": "failed",
-                }
-            },
+            {"$set": {"status": "failed"}},
         )
-
         raise
 
     document_collection.update_one(
@@ -153,6 +169,12 @@ def index_document(
                 "status": "indexed",
             }
         },
+    )
+
+    logger.info(
+        "Document indexing completed for document_id=%s with %s chunks",
+        document_id,
+        indexed_count,
     )
 
     # -----------------------------------------------------

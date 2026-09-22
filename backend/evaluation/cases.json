@@ -1,0 +1,103 @@
+[
+  {
+    "id": "document-exact-provision",
+    "category": "document",
+    "query": "What does Article 32 say?",
+    "expected_route": "rag"
+  },
+  {
+    "id": "document-semantic",
+    "category": "document",
+    "query": "According to this document, how are constitutional remedies described?",
+    "expected_route": "rag"
+  },
+  {
+    "id": "document-unsupported",
+    "category": "document",
+    "query": "According to this document, what does it say about lunar mining rights?",
+    "expected_route": "rag"
+  },
+  {
+    "id": "document-isolation",
+    "category": "isolation",
+    "query": "What does Article 32 say?",
+    "expected_route": "rag"
+  },
+  {
+    "id": "web-current-law",
+    "category": "web",
+    "query": "What is the latest Indian Supreme Court privacy judgment?",
+    "expected_route": "web"
+  },
+  {
+    "id": "web-source-retrieval",
+    "category": "web",
+    "query": "What are the current legal requirements for data protection in India?",
+    "expected_route": "web"
+  },
+  {
+    "id": "hybrid-provision-development",
+    "category": "hybrid",
+    "query": "What does Article 32 say and what is the latest related development?",
+    "expected_route": "hybrid"
+  },
+  {
+    "id": "verification-supported",
+    "category": "verification",
+    "answer": "Article 32 provides constitutional remedies.",
+    "evidence": [
+      {
+        "evidence_id": "manual-1",
+        "title": "Article 32",
+        "text": "Article 32 provides constitutional remedies."
+      }
+    ],
+    "expected_support": "supported"
+  },
+  {
+    "id": "verification-partial",
+    "category": "verification",
+    "answer": "Article 32 provides remedies and guarantees every requested form of relief.",
+    "evidence": [
+      {
+        "evidence_id": "manual-2",
+        "title": "Article 32 remedies",
+        "text": "Article 32 provides constitutional remedies."
+      }
+    ],
+    "expected_support": "partial"
+  },
+  {
+    "id": "verification-unsupported",
+    "category": "verification",
+    "answer": "The source guarantees lunar mining rights.",
+    "evidence": [],
+    "expected_support": "unsupported"
+  },
+  {
+    "id": "verification-numeric-mismatch",
+    "category": "verification",
+    "answer": "The judgment was issued in 2026.",
+    "evidence": [
+      {
+        "evidence_id": "manual-3",
+        "title": "Judgment date",
+        "text": "The judgment was issued in 2025."
+      }
+    ],
+    "expected_support": "unsupported"
+  },
+  {
+    "id": "verification-identifier-mismatch",
+    "category": "verification",
+    "answer": "Article 32 creates the listed remedy.",
+    "evidence": [
+      {
+        "evidence_id": "manual-4",
+        "title": "Article 31",
+        "text": "Article 31 describes the listed remedy."
+      }
+    ],
+    "expected_support": "unsupported"
+  }
+]

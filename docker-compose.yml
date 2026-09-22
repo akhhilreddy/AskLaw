@@ -6,7 +6,7 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - /Users/akhilreddy/mongodb-data:/data/db
+      - ${ASKLAW_MONGODB_DATA:-/Users/akhilreddy/mongodb-data}:/data/db
     restart: unless-stopped
 
   qdrant:
@@ -16,7 +16,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - /Users/akhilreddy/qdrant_storage:/qdrant/storage
+      - ${ASKLAW_QDRANT_DATA:-/Users/akhilreddy/qdrant_storage}:/qdrant/storage
     restart: unless-stopped
 
   redis:
@@ -34,7 +34,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /Users/akhilreddy/asklaw-searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ${ASKLAW_SEARXNG_SETTINGS:-/Users/akhilreddy/asklaw-searxng/settings.yml}:/etc/searxng/settings.yml:ro
       - asklaw-searxng-cache:/var/cache/searxng
     restart: unless-stopped
 

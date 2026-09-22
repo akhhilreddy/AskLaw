@@ -9,6 +9,7 @@ from app.db.mongodb import document_collection
 from app.tasks.document_tasks import (
     index_document,
 )
+from app.services.vector_service import delete_document_chunks
 
 
 # =========================================================
@@ -132,6 +133,72 @@ def get_user_documents(
         )
 
     return results
+
+
+# =========================================================
+# DELETE OWNED DOCUMENT
+# =========================================================
+
+def delete_owned_document(
+    document_id: str,
+    user_id: str,
+):
+    """
+    Delete vectors before the MongoDB record so a vector cleanup failure
+    remains visible and retryable through the same endpoint.
+    """
+
+    try:
+        object_id = ObjectId(document_id)
+    except Exception:
+        return None
+
+    document = document_collection.find_one(
+        {
+            "_id": object_id,
+            "user_id": user_id,
+        },
+        {
+            "filename": 1,
+            "status": 1,
+        },
+    )
+
+    if not document:
+        return None
+
+    if document.get("status") in {"uploaded", "processing"}:
+        raise HTTPException(
+            status_code=409,
+            detail="This document is still being indexed. Try deleting it after processing finishes.",
+        )
+
+    try:
+        delete_document_chunks(
+            document_id=document_id,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Document vectors could not be removed. The document was not deleted.",
+        ) from exc
+
+    result = document_collection.delete_one(
+        {
+            "_id": object_id,
+            "user_id": user_id,
+        }
+    )
+
+    if result.deleted_count == 0:
+        return None
+
+    return {
+        "message": "Document deleted successfully",
+        "document_id": document_id,
+        "filename": document.get("filename"),
+    }
 
 
 # =========================================================

@@ -1,5 +1,12 @@
+import logging
+
 import httpx
 from mcp.server.mcpserver import MCPServer
+
+from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 server = MCPServer(
     name="AskLaw MCP",
@@ -20,7 +27,7 @@ async def search_web(query: str, limit: int = 5) -> dict:
         Structured search results.
     """
 
-    url = "http://127.0.0.1:8080/search"
+    url = settings.SEARXNG_URL
 
     params = {
         "q": query,
@@ -71,12 +78,13 @@ async def search_web(query: str, limit: int = 5) -> dict:
         }
 
     except Exception as exc:
+        logger.warning("SearXNG request failed: %s", type(exc).__name__)
 
         return {
             "query": query,
             "results": [],
             "count": 0,
-            "error": str(exc),
+            "error": "Web search is temporarily unavailable",
         }
 
 
@@ -86,15 +94,15 @@ if __name__ == "__main__":
     print("ASKLAW MCP SERVER")
     print("=" * 60)
     print("Starting MCP server...")
-    print("URL: http://127.0.0.1:8001/mcp")
+    print(f"URL: http://{settings.MCP_HOST}:{settings.MCP_PORT}/mcp")
     print("=" * 60)
 
     import asyncio
 
     asyncio.run(
         server.run_streamable_http_async(
-            host="127.0.0.1",
-            port=8001,
+            host=settings.MCP_HOST,
+            port=settings.MCP_PORT,
             streamable_http_path="/mcp",
         )
     )

@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   FileText,
   RefreshCw,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -13,7 +14,7 @@ import api from "../services/api";
 
 const statusLabels = {
   uploaded: "Uploaded",
-  processing: "Indexing",
+  processing: "Processing",
   indexed: "Indexed",
   failed: "Indexing failed",
 };
@@ -47,22 +48,29 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [libraryError, setLibraryError] = useState("");
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
   const inputRef = useRef(null);
 
-  const loadDocuments = useCallback(async () => {
-    setLoadingDocuments(true);
-    setLibraryError("");
+  const loadDocuments = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoadingDocuments(true);
+      setLibraryError("");
+    }
 
     try {
       const response = await api.get("/documents");
       setDocuments(Array.isArray(response.data) ? response.data : []);
     } catch (requestError) {
-      setLibraryError(
-        requestError.response?.data?.detail ||
-          "Could not load your document library. Please try again."
-      );
+      if (!silent) {
+        setLibraryError(
+          requestError.response?.data?.detail ||
+            "Could not load your document library. Please try again."
+        );
+      }
     } finally {
-      setLoadingDocuments(false);
+      if (!silent) setLoadingDocuments(false);
     }
   }, []);
 
@@ -82,6 +90,20 @@ export default function Documents() {
       loadTimer
     );
   }, [loadDocuments]);
+
+  useEffect(() => {
+    const hasPendingDocument = documents.some((document) =>
+      ["uploaded", "processing"].includes(document.status || "uploaded")
+    );
+
+    if (!hasPendingDocument) return undefined;
+
+    const pollTimer = window.setInterval(() => {
+      loadDocuments({ silent: true });
+    }, 3000);
+
+    return () => window.clearInterval(pollTimer);
+  }, [documents, loadDocuments]);
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -133,6 +155,30 @@ export default function Documents() {
       );
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteCandidate || deletingId) return;
+
+    setDeleteError("");
+    setDeletingId(deleteCandidate.document_id);
+
+    try {
+      await api.delete(`/documents/${encodeURIComponent(deleteCandidate.document_id)}`);
+      setDocuments((current) =>
+        current.filter(
+          (document) => document.document_id !== deleteCandidate.document_id
+        )
+      );
+      setDeleteCandidate(null);
+    } catch (requestError) {
+      setDeleteError(
+        requestError.response?.data?.detail ||
+          "Could not delete this document. Please try again."
+      );
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -216,6 +262,20 @@ export default function Documents() {
             <p style={{ fontSize: 13, marginTop: 10 }}>
               {uploadResult.message}
             </p>
+            <div className="document-metadata">
+              {uploadResult.document_id && (
+                <span>Document ID: {uploadResult.document_id}</span>
+              )}
+              {uploadResult.page_count != null && (
+                <span>{uploadResult.page_count} pages</span>
+              )}
+              {uploadResult.character_count != null && (
+                <span>{uploadResult.character_count} characters</span>
+              )}
+              {uploadResult.chunk_count != null && (
+                <span>{uploadResult.chunk_count} chunks</span>
+              )}
+            </div>
           </section>
         )}
 
@@ -348,6 +408,16 @@ export default function Documents() {
                       )}
                       {uploadedAt && <span>{uploadedAt}</span>}
                     </span>
+                    {status === "processing" && (
+                      <span className="document-status-note">
+                        This document is still being indexed.
+                      </span>
+                    )}
+                    {status === "failed" && (
+                      <span className="document-status-note error">
+                        Document indexing failed.
+                      </span>
+                    )}
                   </div>
                   <div
                     style={{
@@ -381,6 +451,28 @@ export default function Documents() {
                         <ArrowRight size={13} aria-hidden="true" />
                       </Link>
                     )}
+                    <button
+                      type="button"
+                      className="document-delete-button"
+                      onClick={() => {
+                        setDeleteError("");
+                        setDeleteCandidate(document);
+                      }}
+                      disabled={
+                        deletingId === document.document_id ||
+                        status === "uploaded" ||
+                        status === "processing"
+                      }
+                      title={
+                        status === "uploaded" || status === "processing"
+                          ? "This document is still being indexed."
+                          : `Delete ${document.filename}`
+                      }
+                      aria-label={`Delete ${document.filename}`}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                      Delete
+                    </button>
                   </div>
                 </article>
               );
@@ -393,6 +485,44 @@ export default function Documents() {
           </Link>
         </p>
       </div>
+
+      {deleteCandidate && (
+        <div className="modal-backdrop" role="presentation">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-document-title"
+          >
+            <h2 id="delete-document-title">Delete document?</h2>
+            <p>
+              This removes <strong>{deleteCandidate.filename}</strong> and its
+              indexed research data. This action cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="field-error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                onClick={() => setDeleteCandidate(null)}
+                disabled={Boolean(deletingId)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={Boolean(deletingId)}
+              >
+                {deletingId ? "Deleting…" : "Delete document"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

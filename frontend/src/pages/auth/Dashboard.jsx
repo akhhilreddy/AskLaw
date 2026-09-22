@@ -113,6 +113,7 @@ export default function Dashboard() {
       >
         {documentId && (
           <div
+            className="document-context"
             role="status"
             style={{
               display: "flex",
@@ -126,13 +127,15 @@ export default function Dashboard() {
             }}
           >
             <FileText size={15} aria-hidden="true" />
-            <span className="eyebrow">Researching</span>
-            <strong style={{ overflowWrap: "anywhere" }}>
-              {selectedDocument?.filename ||
-                (documentContextError
-                  ? documentContextError
-                  : "Loading selected document…")}
-            </strong>
+            <span>
+              <span className="eyebrow">Researching</span>
+              <strong>
+                {selectedDocument?.filename ||
+                  (documentContextError
+                    ? documentContextError
+                    : "Loading selected document…")}
+              </strong>
+            </span>
           </div>
         )}
 

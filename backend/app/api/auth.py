@@ -75,7 +75,7 @@ def login(user: UserLogin,response : Response):
     key="refresh_token",
     value=refresh_token,
     httponly=True,
-    secure=False,      # Change to True in production (HTTPS)
+    secure=settings.COOKIE_SECURE,
     samesite="lax",
     max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
 )
@@ -120,7 +120,7 @@ def login_swagger(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )

@@ -6,6 +6,7 @@ from qdrant_client.models import (
     PointStruct,
     Filter,
     FieldCondition,
+    FilterSelector,
     MatchValue,
 )
 
@@ -13,21 +14,23 @@ from sentence_transformers import (
     SentenceTransformer,
 )
 
+from app.core.config import settings
+
 
 # =========================================================
 # CONFIG
 # =========================================================
 
 QDRANT_URL = (
-    "http://localhost:6333"
+    settings.QDRANT_URL
 )
 
 COLLECTION_NAME = (
-    "asklaw_documents"
+    settings.QDRANT_COLLECTION_NAME
 )
 
 EMBEDDING_MODEL = (
-    "sentence-transformers/all-MiniLM-L6-v2"
+    settings.EMBEDDING_MODEL
 )
 
 
@@ -46,7 +49,8 @@ EMBEDDING_MODEL = (
 # =========================================================
 
 qdrant_client = QdrantClient(
-    url=QDRANT_URL
+    url=QDRANT_URL,
+    check_compatibility=False,
 )
 
 
@@ -143,6 +147,45 @@ def store_chunk(
     qdrant_client.upsert(
         collection_name=COLLECTION_NAME,
         points=[point],
+    )
+
+
+# =========================================================
+# DELETE ONE USER'S DOCUMENT CHUNKS
+# =========================================================
+
+def delete_document_chunks(
+    document_id: str,
+    user_id: str,
+):
+    """Delete vectors for one owned document, if the collection exists."""
+
+    existing_collections = qdrant_client.get_collections()
+    collection_names = {
+        collection.name
+        for collection in existing_collections.collections
+    }
+
+    if COLLECTION_NAME not in collection_names:
+        return
+
+    qdrant_client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=FilterSelector(
+            filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id),
+                    ),
+                    FieldCondition(
+                        key="user_id",
+                        match=MatchValue(value=user_id),
+                    ),
+                ]
+            )
+        ),
+        wait=True,
     )
 
 

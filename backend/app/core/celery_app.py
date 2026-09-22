@@ -1,5 +1,7 @@
 from celery import Celery
 
+from app.core.config import settings
+
 
 # =========================================================
 # CELERY APP
@@ -7,8 +9,8 @@ from celery import Celery
 
 celery_app = Celery(
     "asklaw",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/1",
+    broker=settings.CELERY_BROKER_URL,
+    backend=settings.CELERY_RESULT_BACKEND,
 )
 
 
