@@ -27,11 +27,15 @@ def index_document(
     store all of its chunks in Qdrant.
     """
 
-    # -----------------------------------------------------
-    # MAKE SURE QDRANT COLLECTION EXISTS
-    # -----------------------------------------------------
-
-    create_collection()
+    try:
+        object_id = ObjectId(
+            document_id
+        )
+    except Exception:
+        return {
+            "success": False,
+            "message": "Invalid document ID",
+        }
 
     # -----------------------------------------------------
     # GET DOCUMENT FROM MONGODB
@@ -39,7 +43,7 @@ def index_document(
 
     document = document_collection.find_one(
         {
-            "_id": ObjectId(document_id),
+            "_id": object_id,
             "user_id": user_id,
         }
     )
@@ -50,68 +54,106 @@ def index_document(
             "message": "Document not found",
         }
 
+    document_collection.update_one(
+        {
+            "_id": object_id,
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "status": "processing",
+            }
+        },
+    )
+
     # -----------------------------------------------------
     # GET DOCUMENT DATA
     # -----------------------------------------------------
 
-    filename = document.get(
-        "filename"
-    )
-
-    chunks = document.get(
-        "chunks",
-        [],
-    )
-
-    # -----------------------------------------------------
-    # INDEX EVERY CHUNK
-    # -----------------------------------------------------
-
-    indexed_count = 0
-
-    for chunk in chunks:
-
-        chunk_index = chunk.get(
-            "index"
-        )
-
-        chunk_text = chunk.get(
-            "text"
-        )
-
-        page_number = chunk.get(
-            "page_number"
-        )
-
-        if not chunk_text:
-            continue
-
+    try:
         # -------------------------------------------------
-        # CREATE VALID QDRANT POINT ID
+        # MAKE SURE QDRANT COLLECTION EXISTS
         # -------------------------------------------------
 
-        point_id = str(
-            uuid.uuid5(
-                uuid.NAMESPACE_DNS,
-                f"{document_id}_{chunk_index}",
+        create_collection()
+
+        filename = document.get(
+            "filename"
+        )
+
+        chunks = document.get(
+            "chunks",
+            [],
+        )
+
+        # -------------------------------------------------
+        # INDEX EVERY CHUNK
+        # -------------------------------------------------
+
+        indexed_count = 0
+
+        for chunk in chunks:
+
+            chunk_index = chunk.get(
+                "index"
             )
+
+            chunk_text = chunk.get(
+                "text"
+            )
+
+            page_number = chunk.get(
+                "page_number"
+            )
+
+            if not chunk_text:
+                continue
+
+            point_id = str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_DNS,
+                    f"{document_id}_{chunk_index}",
+                )
+            )
+
+            store_chunk(
+                chunk_id=point_id,
+                text=chunk_text,
+                document_id=document_id,
+                user_id=user_id,
+                filename=filename,
+                chunk_index=chunk_index,
+                page_number=page_number,
+            )
+
+            indexed_count += 1
+
+    except Exception:
+        document_collection.update_one(
+            {
+                "_id": object_id,
+                "user_id": user_id,
+            },
+            {
+                "$set": {
+                    "status": "failed",
+                }
+            },
         )
 
-        # -------------------------------------------------
-        # STORE IN QDRANT
-        # -------------------------------------------------
+        raise
 
-        store_chunk(
-            chunk_id=point_id,
-            text=chunk_text,
-            document_id=document_id,
-            user_id=user_id,
-            filename=filename,
-            chunk_index=chunk_index,
-            page_number=page_number,
-        )
-
-        indexed_count += 1
+    document_collection.update_one(
+        {
+            "_id": object_id,
+            "user_id": user_id,
+        },
+        {
+            "$set": {
+                "status": "indexed",
+            }
+        },
+    )
 
     # -----------------------------------------------------
     # RETURN TASK RESULT

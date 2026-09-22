@@ -7,10 +7,22 @@ from fastapi import (
 )
 
 from app.core.dependencies import get_current_user
-from app.services.document_service import save_uploaded_document
+from app.services.document_service import (
+    get_user_documents,
+    save_uploaded_document,
+)
 
 
 router = APIRouter()
+
+
+@router.get("")
+def list_documents(
+    current_user=Depends(get_current_user),
+):
+    return get_user_documents(
+        user_id=str(current_user["_id"]),
+    )
 
 
 @router.post("/upload")

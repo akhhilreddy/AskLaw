@@ -19,6 +19,94 @@ CHUNK_OVERLAP = 150
 
 
 # =========================================================
+# LIST USER DOCUMENTS
+# =========================================================
+
+def get_user_documents(
+    user_id: str,
+):
+    document_collection.update_many(
+        {
+            "user_id": user_id,
+            "status": {
+                "$exists": False,
+            },
+        },
+        {
+            "$set": {
+                "status": "uploaded",
+            }
+        },
+    )
+
+    documents = document_collection.find(
+        {
+            "user_id": user_id,
+        },
+        {
+            "filename": 1,
+            "content_type": 1,
+            "content": 1,
+            "page_count": 1,
+            "chunk_count": 1,
+            "status": 1,
+            "uploaded_at": 1,
+        },
+    ).sort(
+        [
+            ("uploaded_at", -1),
+            ("_id", -1),
+        ]
+    )
+
+    results = []
+
+    for document in documents:
+        content = document.get(
+            "content",
+            "",
+        )
+
+        item = {
+            "document_id": str(
+                document["_id"]
+            ),
+            "filename": document.get(
+                "filename"
+            ),
+            "content_type": document.get(
+                "content_type"
+            ),
+            "page_count": document.get(
+                "page_count"
+            ),
+            "character_count": len(
+                content
+            ),
+            "chunk_count": document.get(
+                "chunk_count"
+            ),
+            "status": document.get(
+                "status",
+                "uploaded",
+            ),
+        }
+
+        if document.get(
+            "uploaded_at"
+        ) is not None:
+            item["uploaded_at"] = document[
+                "uploaded_at"
+            ]
+
+        results.append(
+            item
+        )
+
+    return results
+
+
+# =========================================================
 # CREATE CHUNKS FOR ONE PAGE
 # =========================================================
 
@@ -168,6 +256,7 @@ def save_uploaded_document(
         "user_id": user_id,
         "filename": file.filename,
         "content_type": file.content_type,
+        "status": "uploaded",
         "content": full_text,
         "page_count": len(
             reader.pages
