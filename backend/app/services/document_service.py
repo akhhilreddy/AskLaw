@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from bson import ObjectId
 from fastapi import UploadFile, HTTPException
 from pypdf import PdfReader
 
@@ -16,6 +17,33 @@ from app.tasks.document_tasks import (
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
+
+
+# =========================================================
+# GET OWNED DOCUMENT
+# =========================================================
+
+def get_owned_document(
+    document_id: str,
+    user_id: str,
+):
+    try:
+        object_id = ObjectId(
+            document_id
+        )
+    except Exception:
+        return None
+
+    return document_collection.find_one(
+        {
+            "_id": object_id,
+            "user_id": user_id,
+        },
+        {
+            "filename": 1,
+            "status": 1,
+        },
+    )
 
 
 # =========================================================

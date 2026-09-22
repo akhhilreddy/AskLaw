@@ -26,7 +26,8 @@ export const sendMessage = async (message) => {
 
 export const streamMessage = async (
   messages,
-  onChunk
+  onChunk,
+  documentId = null,
 ) => {
 
   // -------------------------------------------------------
@@ -68,6 +69,11 @@ export const streamMessage = async (
 
       body: JSON.stringify({
         messages,
+        ...(documentId
+          ? {
+              document_id: documentId,
+            }
+          : {}),
       }),
     }
   );

@@ -1,6 +1,7 @@
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
 )
 
 from fastapi.responses import (
@@ -17,6 +18,10 @@ from app.schemas.chat import (
 
 from app.core.dependencies import (
     get_current_user,
+)
+
+from app.services.document_service import (
+    get_owned_document,
 )
 
 
@@ -42,6 +47,18 @@ def chat_stream(
         current_user["_id"]
     )
 
+    if request.document_id:
+        document = get_owned_document(
+            document_id=request.document_id,
+            user_id=user_id,
+        )
+
+        if document is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Document not found",
+            )
+
     # -----------------------------------------------------
     # STREAM RESPONSE
     # -----------------------------------------------------
@@ -50,6 +67,7 @@ def chat_stream(
         stream_response(
             request.messages,
             user_id,
+            request.document_id,
         ),
         media_type="application/x-ndjson",
     )

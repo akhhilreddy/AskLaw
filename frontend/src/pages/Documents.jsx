@@ -349,15 +349,39 @@ export default function Documents() {
                       {uploadedAt && <span>{uploadedAt}</span>}
                     </span>
                   </div>
-                  <span
+                  <div
                     style={{
-                      color: statusColors[status] || "var(--muted)",
-                      fontWeight: 650,
-                      whiteSpace: "nowrap",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      flexShrink: 0,
                     }}
                   >
-                    {statusLabels[status] || status}
-                  </span>
+                    <span
+                      style={{
+                        color: statusColors[status] || "var(--muted)",
+                        fontWeight: 650,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {statusLabels[status] || status}
+                    </span>
+                    {status === "indexed" && (
+                      <Link
+                        className="primary-button"
+                        to={`/dashboard?document_id=${encodeURIComponent(
+                          document.document_id
+                        )}`}
+                        style={{
+                          padding: "8px 12px",
+                          fontSize: 12,
+                        }}
+                      >
+                        Research
+                        <ArrowRight size={13} aria-hidden="true" />
+                      </Link>
+                    )}
+                  </div>
                 </article>
               );
             })}

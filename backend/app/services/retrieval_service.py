@@ -440,7 +440,8 @@ def deduplicate_chunks(
 
 def find_exact_article(
     article_number,
-    user_id
+    user_id,
+    document_id=None,
 ):
 
     if not article_number:
@@ -453,15 +454,27 @@ def find_exact_article(
     # USER FILTER
     # ========================================================
 
-    query_filter = Filter(
-        must=[
+    scope_conditions = [
+        FieldCondition(
+            key="user_id",
+            match=MatchValue(
+                value=user_id
+            )
+        )
+    ]
+
+    if document_id:
+        scope_conditions.append(
             FieldCondition(
-                key="user_id",
+                key="document_id",
                 match=MatchValue(
-                    value=user_id
+                    value=document_id
                 )
             )
-        ]
+        )
+
+    query_filter = Filter(
+        must=scope_conditions
     )
 
     matches = []
@@ -635,22 +648,35 @@ def find_exact_article(
 def semantic_search(
     query,
     user_id,
-    limit
+    limit,
+    document_id=None,
 ):
 
     query_vector = create_embedding(
         query
     )
 
-    query_filter = Filter(
-        must=[
+    scope_conditions = [
+        FieldCondition(
+            key="user_id",
+            match=MatchValue(
+                value=user_id
+            )
+        )
+    ]
+
+    if document_id:
+        scope_conditions.append(
             FieldCondition(
-                key="user_id",
+                key="document_id",
                 match=MatchValue(
-                    value=user_id
+                    value=document_id
                 )
             )
-        ]
+        )
+
+    query_filter = Filter(
+        must=scope_conditions
     )
 
     response = (
@@ -705,7 +731,8 @@ def semantic_search(
 def retrieve_relevant_chunks(
     query,
     user_id,
-    limit=DEFAULT_LIMIT
+    limit=DEFAULT_LIMIT,
+    document_id=None,
 ):
 
     if not query:
@@ -760,6 +787,8 @@ def retrieve_relevant_chunks(
             article_number=article_number,
 
             user_id=user_id,
+
+            document_id=document_id,
         )
 
         print(
@@ -833,6 +862,8 @@ def retrieve_relevant_chunks(
             SEMANTIC_CANDIDATES,
             limit * 10
         ),
+
+        document_id=document_id,
     )
 
     # ========================================================

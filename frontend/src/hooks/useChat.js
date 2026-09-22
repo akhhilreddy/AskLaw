@@ -20,7 +20,9 @@ import {
 // HOOK
 // =========================================================
 
-export default function useChat() {
+export default function useChat({
+  documentId = null,
+} = {}) {
 
   const [conversation, setConversation] =
     useState({
@@ -72,9 +74,14 @@ export default function useChat() {
   // =====================================================
 
   useEffect(() => {
+    const loadTimer = window.setTimeout(
+      loadConversations,
+      0
+    );
 
-    loadConversations();
-
+    return () => window.clearTimeout(
+      loadTimer
+    );
   }, []);
 
 
@@ -460,7 +467,9 @@ export default function useChat() {
 
           }
 
-        }
+        },
+
+        documentId,
 
       );
 

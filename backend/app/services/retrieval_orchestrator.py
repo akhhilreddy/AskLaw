@@ -740,22 +740,22 @@ def _deduplicate_web_results(
 
 def retrieve_rag(
     query: str,
+    user_id: str,
     document_id: str | None = None,
     limit: int = 5,
 ) -> list[dict]:
     """
     Retrieve relevant local-document chunks.
 
-    NOTE:
-    The underlying retrieval function uses positional arguments
-    here deliberately because its parameter name differs from the
-    orchestrator's document_id name.
+    When document_id is supplied, retrieval remains user-scoped
+    and is additionally limited to that document.
     """
 
     results = retrieve_relevant_chunks(
-        query,
-        document_id,
-        limit,
+        query=query,
+        user_id=user_id,
+        document_id=document_id,
+        limit=limit,
     )
 
     return _normalize_rag_results(
@@ -910,6 +910,7 @@ async def retrieve_web(
 
 async def retrieve_for_query(
     query: str,
+    user_id: str,
     document_id: str | None = None,
     rag_limit: int = 5,
     web_limit: int = 5,
@@ -975,6 +976,7 @@ async def retrieve_for_query(
         rag_results = await asyncio.to_thread(
             retrieve_rag,
             query,
+            user_id,
             document_id,
             rag_limit,
         )
@@ -1021,6 +1023,7 @@ async def retrieve_for_query(
         rag_task = asyncio.to_thread(
             retrieve_rag,
             query,
+            user_id,
             document_id,
             rag_limit,
         )
@@ -1060,6 +1063,7 @@ async def retrieve_for_query(
     rag_results = await asyncio.to_thread(
         retrieve_rag,
         query,
+        user_id,
         document_id,
         rag_limit,
     )
@@ -1077,6 +1081,7 @@ async def retrieve_for_query(
 
 def retrieve_for_query_sync(
     query: str,
+    user_id: str,
     document_id: str | None = None,
     rag_limit: int = 5,
     web_limit: int = 5,
@@ -1086,6 +1091,7 @@ def retrieve_for_query_sync(
     return asyncio.run(
         retrieve_for_query(
             query=query,
+            user_id=user_id,
             document_id=document_id,
             rag_limit=rag_limit,
             web_limit=web_limit,

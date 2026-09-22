@@ -318,6 +318,7 @@ def _get_latest_user_message(
 def stream_response(
     messages,
     user_id=None,
+    document_id=None,
 ):
     """
     Complete AskLaw response pipeline.
@@ -377,8 +378,9 @@ def stream_response(
         retrieval_result = (
             asyncio.run(
                 retrieve_for_query(
-                    user_message,
-                    user_id,
+                    query=user_message,
+                    user_id=user_id,
+                    document_id=document_id,
                 )
             )
         )
