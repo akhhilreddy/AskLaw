@@ -1,4 +1,9 @@
-import api, { API_BASE_URL } from "./api";
+import api, {
+  API_BASE_URL,
+  clearSessionAndRedirect,
+  isTerminalRefreshFailure,
+  refreshAccessToken,
+} from "./api";
 
 
 let controller = null;
@@ -95,17 +100,23 @@ export const streamMessage = async (
     response = await request();
 
     if (response.status === 401) {
+      await response.body?.cancel();
+
       try {
-        const refreshResponse = await api.post("/auth/refresh");
-        token = refreshResponse.data.access_token;
-        localStorage.setItem("token", token);
+        token = await refreshAccessToken();
         response = await request();
       } catch (refreshError) {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
-        throw new Error("Your session expired. Please sign in again.", {
-          cause: refreshError,
-        });
+        if (isTerminalRefreshFailure(refreshError)) {
+          clearSessionAndRedirect();
+          throw new Error("Your session expired. Please sign in again.", {
+            cause: refreshError,
+          });
+        }
+
+        throw new Error(
+          "AskLAW could not refresh your session. Check your connection and try again.",
+          { cause: refreshError }
+        );
       }
     }
   } catch (error) {
@@ -130,8 +141,7 @@ export const streamMessage = async (
     const body = await response.json().catch(() => null);
 
     if (response.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+      clearSessionAndRedirect();
     }
 
     throw new Error(body?.detail || "The research request could not be completed.");

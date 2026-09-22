@@ -1,18 +1,9 @@
 import api from "./api";
 
-export const login = async (formData)=>{
-
-    try{
-        const response = await api.post("/auth/login",formData);
-
-    return response.data;
-    }
-
-    catch(error){
-        throw error;
-    }
-    
-}
+export const login = async (formData) => {
+  const response = await api.post("/auth/login", formData);
+  return response.data;
+};
 
 export const getCurrentUser = async () => {
     const response = await api.get("/auth/me");
@@ -20,12 +11,8 @@ export const getCurrentUser = async () => {
 };
 
 export const signup = async (formData) => {
-  try {
-    const response = await api.post("/auth/signup", formData);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
+  const response = await api.post("/auth/signup", formData);
+  return response.data;
 };
 
 export const logout = async () => {
@@ -40,4 +27,3 @@ export const getMe = async () => {
   const response = await api.get("/auth/me");
   return response.data;
 };
-

@@ -35,14 +35,20 @@ def create_token(data: dict, expires_delta: timedelta) -> str:
 
 
 def create_access_token(data: dict) -> str:
+    token_data = data.copy()
+    token_data["token_type"] = "access"
+
     return create_token(
-        data,
+        token_data,
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
 
 def create_refresh_token(data: dict) -> str:
+    token_data = data.copy()
+    token_data["token_type"] = "refresh"
+
     return create_token(
-        data,
+        token_data,
         timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )

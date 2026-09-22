@@ -3,6 +3,7 @@ import sys
 import types
 import unittest
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -391,14 +392,119 @@ class AuthAndChatTests(unittest.TestCase):
             self.assertNotIn("password", empty_users.inserted[0])
             self.assertEqual(empty_users.inserted[0]["password_hash"], "hashed")
 
-        with patch.object(auth.jwt, "decode", return_value={"sub": "person@example.com"}), patch.object(
-            auth, "create_access_token", return_value="renewed"
-        ):
+        with patch.object(auth, "user_collection", users), patch.object(
+            auth.jwt, "decode", return_value={"sub": "person@example.com"}
+        ), patch.object(auth, "create_access_token", return_value="renewed"):
             self.assertEqual(auth.refresh_access_token("refresh")["access_token"], "renewed")
 
         with patch.object(dependencies.jwt, "decode", side_effect=dependencies.JWTError()):
             with self.assertRaises(HTTPException) as caught:
                 dependencies.get_current_user("bad-token")
+        self.assertEqual(caught.exception.status_code, 401)
+
+    def test_refresh_cookie_attributes_match_login_and_logout(self):
+        from app.api import auth
+
+        users = FakeCollection(
+            {"_id": ObjectId(), "email": "person@example.com", "password_hash": "hash"}
+        )
+        login_response = Response()
+
+        with patch.object(auth, "user_collection", users), patch.object(
+            auth, "verify_password", return_value=True
+        ), patch.object(auth, "create_access_token", return_value="access"), patch.object(
+            auth, "create_refresh_token", return_value="refresh"
+        ):
+            auth.login(
+                UserLogin(email="person@example.com", password="secret"),
+                login_response,
+            )
+
+        cookie = login_response.headers["set-cookie"]
+        self.assertIn("refresh_token=refresh", cookie)
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("Path=/auth", cookie)
+        self.assertIn("SameSite=lax", cookie)
+        self.assertIn("Max-Age=604800", cookie)
+        self.assertIn("expires=", cookie.lower())
+        self.assertNotIn("Secure", cookie)
+
+        logout_response = Response()
+        auth.logout(logout_response)
+        deleted_cookie = logout_response.headers["set-cookie"]
+        self.assertIn("refresh_token=", deleted_cookie)
+        self.assertIn("Max-Age=0", deleted_cookie)
+        self.assertIn("Path=/auth", deleted_cookie)
+
+    def test_refresh_rejects_missing_invalid_and_deleted_user_sessions(self):
+        from app.api import auth
+
+        with self.assertRaises(HTTPException) as missing:
+            auth.refresh_access_token(None)
+        self.assertEqual(missing.exception.status_code, 401)
+
+        with patch.object(auth.jwt, "decode", side_effect=auth.JWTError()):
+            with self.assertRaises(HTTPException) as invalid:
+                auth.refresh_access_token("invalid")
+        self.assertEqual(invalid.exception.status_code, 401)
+
+        with patch.object(
+            auth.jwt, "decode", return_value={"sub": "deleted@example.com"}
+        ), patch.object(auth, "user_collection", FakeCollection(None)):
+            with self.assertRaises(HTTPException) as deleted:
+                auth.refresh_access_token("refresh")
+        self.assertEqual(deleted.exception.status_code, 401)
+
+        with patch.object(
+            auth.jwt,
+            "decode",
+            return_value={"sub": "person@example.com", "token_type": "access"},
+        ), patch.object(auth, "user_collection", FakeCollection({"email": "person@example.com"})):
+            with self.assertRaises(HTTPException) as wrong_type:
+                auth.refresh_access_token("access-token")
+        self.assertEqual(wrong_type.exception.status_code, 401)
+
+    def test_access_and_refresh_token_lifetimes(self):
+        from jose import jwt
+
+        from app.core.config import settings
+        from app.utils.security import create_access_token, create_refresh_token
+
+        now = datetime.now(timezone.utc).timestamp()
+        access_payload = jwt.decode(
+            create_access_token({"sub": "person@example.com"}),
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+        refresh_payload = jwt.decode(
+            create_refresh_token({"sub": "person@example.com"}),
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+
+        self.assertAlmostEqual(
+            access_payload["exp"] - now,
+            settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            delta=3,
+        )
+        self.assertAlmostEqual(
+            refresh_payload["exp"] - now,
+            settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            delta=3,
+        )
+        self.assertGreater(refresh_payload["exp"], access_payload["exp"])
+        self.assertEqual(access_payload["token_type"], "access")
+        self.assertEqual(refresh_payload["token_type"], "refresh")
+
+    def test_refresh_token_cannot_authenticate_protected_endpoint(self):
+        from app.core import dependencies
+
+        payload = {"sub": "person@example.com", "token_type": "refresh"}
+
+        with patch.object(dependencies.jwt, "decode", return_value=payload):
+            with self.assertRaises(HTTPException) as caught:
+                dependencies.get_current_user("refresh-token")
+
         self.assertEqual(caught.exception.status_code, 401)
 
     def test_chat_request_document_id_is_optional(self):

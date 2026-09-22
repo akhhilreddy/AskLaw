@@ -1,8 +1,63 @@
 import axios from "axios";
 
 export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
+  import.meta.env?.VITE_API_BASE_URL || "http://localhost:8000"
 ).replace(/\/$/, "");
+
+let refreshPromise = null;
+let redirectingToLogin = false;
+
+const unauthenticatedPaths = new Set([
+  "/auth/login",
+  "/auth/signup",
+  "/auth/refresh",
+  "/auth/token",
+]);
+
+const isUnauthenticatedRequest = (url) => unauthenticatedPaths.has(url);
+
+export const isTerminalRefreshFailure = (error) => {
+  if (error?.isAuthSessionError) return true;
+
+  return [400, 401, 403].includes(error?.response?.status);
+};
+
+export const clearSession = () => {
+  localStorage.removeItem("token");
+};
+
+export const clearSessionAndRedirect = () => {
+  clearSession();
+
+  if (!redirectingToLogin && window.location.pathname !== "/login") {
+    redirectingToLogin = true;
+    window.location.replace("/login");
+  }
+};
+
+export const refreshAccessToken = () => {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+      .then((response) => {
+        const newToken = response.data?.access_token;
+
+        if (!newToken) {
+          const error = new Error("Refresh response did not contain an access token.");
+          error.isAuthSessionError = true;
+          throw error;
+        }
+
+        localStorage.setItem("token", newToken);
+        return newToken;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -13,10 +68,7 @@ const api = axios.create({
 // Login/signup/refresh must be allowed to run without an old token.
 api.interceptors.request.use(
   (config) => {
-    const isAuthRequest =
-      config.url === "/auth/login" ||
-      config.url === "/auth/signup" ||
-      config.url === "/auth/refresh";
+    const isAuthRequest = isUnauthenticatedRequest(config.url);
 
     if (!isAuthRequest) {
       const token = localStorage.getItem("token");
@@ -42,10 +94,7 @@ api.interceptors.response.use(
     }
 
     // Never try token refresh for auth endpoints themselves.
-    const isAuthRequest =
-      originalRequest.url === "/auth/login" ||
-      originalRequest.url === "/auth/signup" ||
-      originalRequest.url === "/auth/refresh";
+    const isAuthRequest = isUnauthenticatedRequest(originalRequest.url);
 
     if (
       error.response?.status === 401 &&
@@ -53,28 +102,22 @@ api.interceptors.response.use(
       !isAuthRequest
     ) {
       originalRequest._retry = true;
+      let newToken;
 
       try {
-        // Refresh using a clean request that does not go through
-        // the authentication interceptor again.
-        const refreshResponse = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
-
-        const newToken = refreshResponse.data.access_token;
-
-        localStorage.setItem("token", newToken);
-
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-
-        return api(originalRequest);
+        newToken = await refreshAccessToken();
       } catch (refreshError) {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
+        if (isTerminalRefreshFailure(refreshError)) {
+          clearSessionAndRedirect();
+        }
+
         return Promise.reject(refreshError);
       }
+
+      originalRequest.headers = originalRequest.headers || {};
+      originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+      return api(originalRequest);
     }
 
     return Promise.reject(error);

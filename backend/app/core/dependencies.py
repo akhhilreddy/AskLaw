@@ -31,8 +31,11 @@ def get_current_user(
         )
 
         email = payload.get("sub")
+        token_type = payload.get("token_type")
 
-        if email is None:
+        # Tokens issued before token_type was introduced remain valid during
+        # migration. Newly issued refresh tokens cannot authenticate requests.
+        if email is None or token_type not in {None, "access"}:
             raise credentials_exception
 
         user = user_collection.find_one({

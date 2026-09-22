@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter
 from fastapi import Response
 from app.db.mongodb import user_collection
@@ -12,12 +14,30 @@ from fastapi import Depends
 from fastapi import HTTPException, status
 from app.schemas.auth import UserLogin
 from app.schemas.auth import SignUpRequest
-from app.core.config import Settings
+from app.core.config import settings
 from fastapi import Cookie
-settings = Settings()
 from jose import JWTError, jwt
 
 router = APIRouter()
+
+
+REFRESH_COOKIE_NAME = "refresh_token"
+REFRESH_COOKIE_PATH = "/auth"
+
+
+def set_refresh_cookie(response: Response, refresh_token: str):
+    lifetime = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        path=REFRESH_COOKIE_PATH,
+        max_age=int(lifetime.total_seconds()),
+        expires=datetime.now(timezone.utc) + lifetime,
+    )
 
 @router.post("/signup",
              status_code=status.HTTP_201_CREATED)
@@ -71,14 +91,7 @@ def login(user: UserLogin,response : Response):
     refresh_token = create_refresh_token(
     data={"sub": existing_user["email"]}
     )
-    response.set_cookie(
-    key="refresh_token",
-    value=refresh_token,
-    httponly=True,
-    secure=settings.COOKIE_SECURE,
-    samesite="lax",
-    max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
-)
+    set_refresh_cookie(response, refresh_token)
     return {
         "access_token": access_token,
         "token_type": "bearer"
@@ -116,14 +129,7 @@ def login_swagger(
         data={"sub": existing_user["email"]}
     )
 
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite="lax",
-        max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
-    )
+    set_refresh_cookie(response, refresh_token)
 
     return {
         "access_token": access_token,
@@ -149,8 +155,17 @@ def refresh_access_token(
         )
 
         email = payload.get("sub")
+        token_type = payload.get("token_type")
 
-        if email is None:
+        # Accept legacy untyped refresh cookies during migration. Newly issued
+        # access tokens are explicitly rejected by the refresh endpoint.
+        if email is None or token_type not in {None, "refresh"}:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid refresh token",
+            )
+
+        if user_collection.find_one({"email": email}) is None:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid refresh token",
@@ -185,9 +200,10 @@ def get_me(current_user = Depends(get_current_user)):
 @router.post("/logout")
 def logout(response: Response):
     response.delete_cookie(
-        key="refresh_token",
+        key=REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
     )
 
