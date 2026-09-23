@@ -103,29 +103,9 @@ export default function Dashboard() {
       userName={userName}
       title={title}
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          minHeight: 0,
-        }}
-      >
+      <div className="chat-workspace">
         {documentId && (
-          <div
-            className="document-context"
-            role="status"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 28px",
-              borderBottom: "1px solid var(--line)",
-              background: "#f8fafb",
-              color: "var(--brand)",
-              fontSize: 13,
-            }}
-          >
+          <div className="document-context" role="status">
             <FileText size={15} aria-hidden="true" />
             <span>
               <span className="eyebrow">Researching</span>

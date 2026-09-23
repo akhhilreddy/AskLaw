@@ -19,13 +19,6 @@ const statusLabels = {
   failed: "Indexing failed",
 };
 
-const statusColors = {
-  uploaded: "#6f7780",
-  processing: "#8a6b32",
-  indexed: "#2e765e",
-  failed: "#af4036",
-};
-
 function formatUploadDate(value) {
   if (!value) return null;
 
@@ -185,14 +178,16 @@ export default function Documents() {
   return (
     <AppLayout userName={userName} section="Documents">
       <div className="document-page">
-        <span className="eyebrow">Your research material</span>
-        <h1>Documents</h1>
-        <p>
-          Upload a PDF to add its contents to AskLAW&apos;s document research.
-          Once indexing completes, you can ask questions about it in Chat.
-        </p>
+        <header className="document-intro">
+          <span className="eyebrow">Your research material</span>
+          <h1>Documents</h1>
+          <p>
+            Upload a PDF to add its contents to AskLAW&apos;s document research.
+            Once indexing completes, you can ask questions about it in Chat.
+          </p>
+        </header>
 
-        <form className="upload-panel" onSubmit={handleUpload}>
+        <form className="upload-panel" onSubmit={handleUpload} aria-busy={uploading}>
           <UploadCloud size={28} color="#192b40" strokeWidth={1.6} />
           <h2>Bring a document into your research.</h2>
           <p>PDF files only. The document is processed and indexed after upload.</p>
@@ -210,7 +205,7 @@ export default function Documents() {
           />
 
           {file && (
-            <div className="upload-row" aria-live="polite">
+            <div className="upload-row selected-file-row" aria-live="polite">
               <strong>
                 <FileText
                   size={15}
@@ -242,7 +237,7 @@ export default function Documents() {
         </form>
 
         {uploadResult && (
-          <section className="upload-list" aria-live="polite">
+          <section className="upload-list upload-success" aria-live="polite">
             <span className="eyebrow">Upload complete</span>
             <div className="upload-row">
               <strong>
@@ -259,7 +254,7 @@ export default function Documents() {
               </strong>
               <span>Indexing started</span>
             </div>
-            <p style={{ fontSize: 13, marginTop: 10 }}>
+            <p className="upload-success-message">
               {uploadResult.message}
             </p>
             <div className="document-metadata">
@@ -279,41 +274,23 @@ export default function Documents() {
           </section>
         )}
 
-        <section className="upload-list" aria-labelledby="document-library-title">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              marginBottom: 8,
-            }}
-          >
+        <section
+          className="upload-list document-library"
+          aria-labelledby="document-library-title"
+          aria-busy={loadingDocuments}
+        >
+          <div className="library-header">
             <div>
               <span className="eyebrow">Saved documents</span>
-              <h2
-                id="document-library-title"
-                style={{
-                  font: "400 27px var(--serif)",
-                  margin: "7px 0 0",
-                }}
-              >
+              <h2 id="document-library-title">
                 Document library
               </h2>
             </div>
             <button
               type="button"
-              className="text-link"
+              className="text-link library-refresh"
               onClick={loadDocuments}
               disabled={loadingDocuments}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                border: 0,
-                background: "transparent",
-                padding: 6,
-              }}
             >
               <RefreshCw
                 size={14}
@@ -324,25 +301,20 @@ export default function Documents() {
           </div>
 
           {loadingDocuments && (
-            <div className="upload-row" role="status">
+            <div className="library-state library-loading" role="status">
               <strong>Loading your documents…</strong>
             </div>
           )}
 
           {!loadingDocuments && libraryError && (
-            <div style={{ padding: "18px 0", borderTop: "1px solid var(--line)" }}>
-              <p className="field-error" role="alert" style={{ margin: 0 }}>
+            <div className="library-state library-error">
+              <p className="field-error" role="alert">
                 {libraryError}
               </p>
               <button
                 type="button"
                 className="text-link"
                 onClick={loadDocuments}
-                style={{
-                  border: 0,
-                  background: "transparent",
-                  padding: "10px 0 0",
-                }}
               >
                 Try again
               </button>
@@ -350,16 +322,11 @@ export default function Documents() {
           )}
 
           {!loadingDocuments && !libraryError && documents.length === 0 && (
-            <div
-              style={{
-                padding: "24px 0",
-                borderTop: "1px solid var(--line)",
-              }}
-            >
-              <strong style={{ fontSize: 14 }}>
+            <div className="library-state library-empty">
+              <strong>
                 Your document library is empty.
               </strong>
-              <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 0 }}>
+              <p>
                 Upload a PDF to start document research.
               </p>
             </div>
@@ -376,29 +343,15 @@ export default function Documents() {
                   : document.content_type;
 
               return (
-                <article className="upload-row" key={document.document_id}>
-                  <div style={{ minWidth: 0 }}>
-                    <strong
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
+                <article className="upload-row document-row" key={document.document_id}>
+                  <div className="document-summary">
+                    <strong className="document-name">
                       <FileText size={15} aria-hidden="true" />
-                      <span style={{ overflowWrap: "anywhere" }}>
+                      <span>
                         {document.filename}
                       </span>
                     </strong>
-                    <span
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "4px 12px",
-                        marginTop: 7,
-                        fontSize: 12,
-                      }}
-                    >
+                    <span className="document-meta-line">
                       {documentType && <span>{documentType}</span>}
                       {document.page_count != null && (
                         <span>{document.page_count} pages</span>
@@ -419,33 +372,16 @@ export default function Documents() {
                       </span>
                     )}
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: statusColors[status] || "var(--muted)",
-                        fontWeight: 650,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                  <div className="document-actions">
+                    <span className={`document-status status-${status}`}>
                       {statusLabels[status] || status}
                     </span>
                     {status === "indexed" && (
                       <Link
-                        className="primary-button"
+                        className="primary-button document-research-button"
                         to={`/dashboard?document_id=${encodeURIComponent(
                           document.document_id
                         )}`}
-                        style={{
-                          padding: "8px 12px",
-                          fontSize: 12,
-                        }}
                       >
                         Research
                         <ArrowRight size={13} aria-hidden="true" />
@@ -479,7 +415,7 @@ export default function Documents() {
             })}
         </section>
 
-        <p style={{ fontSize: 12, marginTop: 28 }}>
+        <p className="document-chat-link">
           <Link className="text-link" to="/dashboard">
             Go to chat <ArrowRight size={13} style={{ display: "inline" }} />
           </Link>
@@ -489,7 +425,7 @@ export default function Documents() {
       {deleteCandidate && (
         <div className="modal-backdrop" role="presentation">
           <div
-            className="modal"
+            className="modal delete-document-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-document-title"

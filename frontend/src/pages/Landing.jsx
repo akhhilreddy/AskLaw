@@ -32,7 +32,10 @@ export default function Landing() {
 
   useEffect(() => {
     const sections = document.querySelectorAll(".landing .reveal");
-    if (!window.IntersectionObserver) return;
+    if (!window.IntersectionObserver) {
+      sections.forEach((section) => section.classList.add("is-visible"));
+      return undefined;
+    }
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {

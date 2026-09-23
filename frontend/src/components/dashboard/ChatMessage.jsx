@@ -50,7 +50,7 @@ function SourceCard({ source }) {
   const url = web && validUrl(source.url) ? source.url : null;
 
   return (
-    <article className="source-card">
+    <article className={`source-card ${web ? "web-source" : "document-source"}`}>
       <div className="source-type">
         {web ? "Web source" : "Document source"}
       </div>
@@ -191,7 +191,7 @@ export default function ChatMessage({ message }) {
       {isUser ? (
         <div className="user-bubble">{message.content}</div>
       ) : (
-        <div>
+        <div className="assistant-message">
           <div className="answer-header">
             <span className="answer-mark">
               <Scale size={15} />
