@@ -1,4 +1,5 @@
 import api from "./api";
+import { normalizeSignupError } from "./authError";
 
 export const login = async (formData) => {
   const response = await api.post("/auth/login", formData);
@@ -11,8 +12,12 @@ export const getCurrentUser = async () => {
 };
 
 export const signup = async (formData) => {
-  const response = await api.post("/auth/signup", formData);
-  return response.data;
+  try {
+    const response = await api.post("/auth/signup", formData);
+    return response.data;
+  } catch (error) {
+    throw new Error(normalizeSignupError(error), { cause: error });
+  }
 };
 
 export const logout = async () => {
