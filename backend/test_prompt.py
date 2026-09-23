@@ -1,3 +1,7 @@
+if __name__ != "__main__":
+    import unittest
+    raise unittest.SkipTest("manual integration script")
+
 from app.db.mongodb import document_collection
 
 from app.services.retrieval_service import (

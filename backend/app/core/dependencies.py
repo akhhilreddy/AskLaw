@@ -33,9 +33,10 @@ def get_current_user(
         email = payload.get("sub")
         token_type = payload.get("token_type")
 
-        # Tokens issued before token_type was introduced remain valid during
-        # migration. Newly issued refresh tokens cannot authenticate requests.
-        if email is None or token_type not in {None, "access"}:
+        # Protected endpoints accept access tokens only. Legacy untyped refresh
+        # tokens may be accepted by /auth/refresh during migration, but they
+        # must never double as bearer access tokens.
+        if email is None or token_type != "access":
             raise credentials_exception
 
         user = user_collection.find_one({

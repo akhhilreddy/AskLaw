@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from bson import ObjectId
+from pymongo import ReturnDocument
 
 from app.core.celery_app import celery_app
 from app.db.mongodb import document_collection
@@ -46,33 +47,45 @@ def index_document(
         }
 
     # -----------------------------------------------------
-    # GET DOCUMENT FROM MONGODB
+    # ATOMICALLY CLAIM THE DOCUMENT
+    #
+    # A different duplicate/redelivered task must not index a document that
+    # has already finished or is being handled by another task. Celery retries
+    # preserve their task ID and may resume the same claim.
     # -----------------------------------------------------
 
-    document = document_collection.find_one(
+    task_id = self.request.id or f"direct:{document_id}"
+
+    document = document_collection.find_one_and_update(
         {
             "_id": object_id,
             "user_id": user_id,
-        }
+            "$or": [
+                {"status": "uploaded"},
+                {
+                    "status": "processing",
+                    "indexing_task_id": task_id,
+                },
+                {
+                    "status": "processing",
+                    "indexing_task_id": {"$exists": False},
+                },
+            ],
+        },
+        {
+            "$set": {
+                "status": "processing",
+                "indexing_task_id": task_id,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
     )
 
     if not document:
         return {
             "success": False,
-            "message": "Document not found",
+            "message": "Document not available for indexing",
         }
-
-    document_collection.update_one(
-        {
-            "_id": object_id,
-            "user_id": user_id,
-        },
-        {
-            "$set": {
-                "status": "processing",
-            }
-        },
-    )
 
     # -----------------------------------------------------
     # GET DOCUMENT DATA
@@ -154,8 +167,12 @@ def index_document(
             {
                 "_id": object_id,
                 "user_id": user_id,
+                "indexing_task_id": task_id,
             },
-            {"$set": {"status": "failed"}},
+            {
+                "$set": {"status": "failed"},
+                "$unset": {"indexing_task_id": ""},
+            },
         )
         raise
 
@@ -163,11 +180,15 @@ def index_document(
         {
             "_id": object_id,
             "user_id": user_id,
+            "indexing_task_id": task_id,
         },
         {
             "$set": {
                 "status": "indexed",
-            }
+            },
+            "$unset": {
+                "indexing_task_id": "",
+            },
         },
     )
 

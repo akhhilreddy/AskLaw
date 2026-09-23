@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile, HTTPException, status
 from pypdf import PdfReader
 
+from app.core.config import settings
 from app.db.mongodb import document_collection
 
 from app.tasks.document_tasks import (
@@ -18,6 +19,51 @@ from app.services.vector_service import delete_document_chunks
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
+
+
+def validate_upload(file: UploadFile) -> str:
+    """Validate upload metadata and return a storage-safe display filename."""
+
+    raw_filename = (file.filename or "").strip()
+
+    if not raw_filename:
+        raise HTTPException(status_code=400, detail="File name is required")
+
+    if any(ord(character) < 32 for character in raw_filename):
+        raise HTTPException(status_code=400, detail="File name is invalid")
+
+    filename = raw_filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+
+    if (
+        not filename
+        or filename.lower() == ".pdf"
+        or len(filename) > 255
+        or not filename.lower().endswith(".pdf")
+    ):
+        raise HTTPException(status_code=400, detail="A valid PDF file name is required")
+
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    size = getattr(file, "size", None)
+    stream = getattr(file, "file", None)
+
+    if size is None and stream is not None:
+        try:
+            stream.seek(0, 2)
+            size = stream.tell()
+            stream.seek(0)
+        except (AttributeError, OSError):
+            size = None
+
+    if size is not None and size > settings.MAX_DOCUMENT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="PDF exceeds the configured upload size limit",
+        )
+
+    file.filename = filename
+    return filename
 
 
 # =========================================================
@@ -250,6 +296,8 @@ def save_uploaded_document(
     file: UploadFile,
     user_id: str,
 ):
+    filename = validate_upload(file)
+
     # -----------------------------------------------------
     # Read PDF
     # -----------------------------------------------------
@@ -257,10 +305,16 @@ def save_uploaded_document(
     try:
         reader = PdfReader(file.file)
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=400,
-            detail=f"Could not read PDF: {str(e)}",
+            detail="Could not read PDF. The file may be malformed or unsupported.",
+        ) from None
+
+    if len(reader.pages) > settings.MAX_DOCUMENT_PAGES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="PDF exceeds the configured page limit",
         )
 
     # -----------------------------------------------------
@@ -269,6 +323,7 @@ def save_uploaded_document(
 
     full_text_parts = []
     all_chunks = []
+    extracted_text_bytes = 0
 
     for page_index, page in enumerate(
         reader.pages
@@ -287,6 +342,14 @@ def save_uploaded_document(
         page_text = page_text.strip()
 
         if page_text:
+            extracted_text_bytes += len(page_text.encode("utf-8"))
+
+            if extracted_text_bytes > settings.MAX_DOCUMENT_TEXT_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail="PDF contains too much extracted text",
+                )
+
             full_text_parts.append(
                 page_text
             )
@@ -349,7 +412,7 @@ def save_uploaded_document(
 
     document = {
         "user_id": user_id,
-        "filename": file.filename,
+        "filename": filename,
         "content_type": file.content_type,
         "status": "uploaded",
         "content": full_text,
@@ -397,7 +460,7 @@ def save_uploaded_document(
         ),
         "document_id": document_id,
         "task_id": task.id,
-        "filename": file.filename,
+        "filename": filename,
         "page_count": len(
             reader.pages
         ),

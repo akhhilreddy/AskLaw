@@ -11,6 +11,7 @@ from app.services.document_service import (
     delete_owned_document,
     get_user_documents,
     save_uploaded_document,
+    validate_upload,
 )
 
 
@@ -50,17 +51,7 @@ def upload_document(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user),
 ):
-    if not file.filename:
-        raise HTTPException(
-            status_code=400,
-            detail="File name is required",
-        )
-
-    if file.content_type != "application/pdf":
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are supported",
-        )
+    validate_upload(file)
 
     result = save_uploaded_document(
         file=file,

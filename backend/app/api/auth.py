@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter
 from fastapi import Response
+from fastapi import Request
 from app.db.mongodb import user_collection
 from app.utils.security import (
     hash_password,
@@ -15,14 +16,34 @@ from fastapi import HTTPException, status
 from app.schemas.auth import UserLogin
 from app.schemas.auth import SignUpRequest
 from app.core.config import settings
+from app.core.dependencies import get_current_user
 from fastapi import Cookie
 from jose import JWTError, jwt
+from pymongo.errors import DuplicateKeyError
 
 router = APIRouter()
 
 
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/auth"
+
+
+def require_trusted_origin(request: Request):
+    """Reject browser cross-origin requests to cookie session endpoints."""
+
+    origin = request.headers.get("origin")
+    api_origin = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+
+    # Non-browser clients may omit Origin. Browser POST requests include it,
+    # and SameSite=Lax remains a second line of defense for the cookie itself.
+    if origin and origin.rstrip("/") not in {
+        *settings.cors_origins,
+        api_origin,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Origin is not allowed",
+        )
 
 
 def set_refresh_cookie(response: Response, refresh_token: str):
@@ -56,13 +77,24 @@ def signup(user : SignUpRequest):
         "password_hash" : hashed_password
     }
 
-    user_collection.insert_one(user_document)
+    try:
+        user_collection.insert_one(user_document)
+    except DuplicateKeyError:
+        # The unique email index closes the race between the lookup above and
+        # insertion without exposing database details.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already exists",
+        ) from None
 
     return{
         "message" : "User registered successfully"
     }
 
-@router.post("/login")
+@router.post(
+    "/login",
+    dependencies=[Depends(require_trusted_origin)],
+)
 def login(user: UserLogin,response : Response):
 
     existing_user = user_collection.find_one({
@@ -97,7 +129,10 @@ def login(user: UserLogin,response : Response):
         "token_type": "bearer"
     }
 
-@router.post("/token")
+@router.post(
+    "/token",
+    dependencies=[Depends(require_trusted_origin)],
+)
 def login_swagger(
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -137,7 +172,10 @@ def login_swagger(
     }
 
 
-@router.post("/refresh")
+@router.post(
+    "/refresh",
+    dependencies=[Depends(require_trusted_origin)],
+)
 def refresh_access_token(
     refresh_token: str | None = Cookie(default=None),
 ):
@@ -157,9 +195,12 @@ def refresh_access_token(
         email = payload.get("sub")
         token_type = payload.get("token_type")
 
-        # Accept legacy untyped refresh cookies during migration. Newly issued
-        # access tokens are explicitly rejected by the refresh endpoint.
-        if email is None or token_type not in {None, "refresh"}:
+        legacy_refresh = (
+            token_type is None
+            and settings.ALLOW_LEGACY_UNTYPED_REFRESH_TOKENS
+        )
+
+        if email is None or not (token_type == "refresh" or legacy_refresh):
             raise HTTPException(
                 status_code=401,
                 detail="Invalid refresh token",
@@ -187,9 +228,6 @@ def refresh_access_token(
     }
 
 
-from fastapi import Depends
-from app.core.dependencies import get_current_user
-
 @router.get("/me")
 def get_me(current_user = Depends(get_current_user)):
     return {
@@ -197,7 +235,10 @@ def get_me(current_user = Depends(get_current_user)):
         "email": current_user["email"]
     }
 
-@router.post("/logout")
+@router.post(
+    "/logout",
+    dependencies=[Depends(require_trusted_origin)],
+)
 def logout(response: Response):
     response.delete_cookie(
         key=REFRESH_COOKIE_NAME,

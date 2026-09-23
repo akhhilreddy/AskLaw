@@ -2,11 +2,13 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Query,
 )
 
 from app.core.dependencies import (
     get_current_user,
 )
+from app.schemas.conversation import ConversationMessageCreate
 
 from app.services.conversation_service import (
     create_conversation,
@@ -89,27 +91,18 @@ def get_single_conversation(
 @router.post("/{conversation_id}/messages")
 def create_message(
     conversation_id: str,
-    message: dict,
+    message: ConversationMessageCreate,
     current_user=Depends(
         get_current_user
     ),
 ):
-    role = message.get("role")
-    content = message.get("content")
-
-    if not role or not content:
-        raise HTTPException(
-            status_code=400,
-            detail="Role and content are required",
-        )
-
     saved_message = add_message(
         conversation_id=conversation_id,
         user_id=str(
             current_user["_id"]
         ),
-        role=role,
-        content=content,
+        role=message.role,
+        content=message.content,
     )
 
     if not saved_message:
@@ -184,7 +177,7 @@ def generate_conversation_title(
 @router.patch("/{conversation_id}/rename")
 def rename_single_conversation(
     conversation_id: str,
-    title: str,
+    title: str = Query(min_length=1, max_length=80),
     current_user=Depends(
         get_current_user
     ),

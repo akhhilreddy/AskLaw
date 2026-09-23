@@ -14,6 +14,12 @@ document_collection = db["documents"]
 def ensure_indexes():
     """Create indexes used by ownership-scoped list and history queries."""
 
+    user_collection.create_index(
+        [("email", 1)],
+        name="users_email_unique",
+        unique=True,
+    )
+
     document_collection.create_index(
         [("user_id", 1), ("uploaded_at", -1)],
         name="documents_user_uploaded_at",
