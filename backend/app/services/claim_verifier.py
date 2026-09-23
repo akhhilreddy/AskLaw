@@ -47,9 +47,72 @@ MIN_CLAIM_LENGTH = 12
 STRONG_SUPPORT_THRESHOLD = 0.42
 PARTIAL_SUPPORT_THRESHOLD = 0.20
 
+CONTRADICTION_CONTEXT_THRESHOLD = 0.60
+MATERIAL_COVERAGE_THRESHOLD = 0.72
+
+TOKEN_EQUIVALENTS = {
+    "apex": "supreme",
+    "judiciary": "court",
+    "courts": "court",
+    "writs": "writ",
+    "rights": "right",
+    "remedies": "remedy",
+    "relief": "remedy",
+    "reliefs": "remedy",
+    "grants": "issue",
+    "grant": "issue",
+    "granted": "issue",
+    "issuing": "issue",
+    "issued": "issue",
+    "protect": "enforce",
+    "protects": "enforce",
+    "protecting": "enforce",
+    "protected": "enforce",
+    "enforcement": "enforce",
+    "provides": "provide",
+    "provided": "provide",
+    "providing": "provide",
+    "guarantee": "provide",
+    "guarantees": "provide",
+    "guaranteed": "provide",
+    "confers": "provide",
+    "conferred": "provide",
+    "requires": "require",
+    "required": "require",
+    "requiring": "require",
+}
+
+MATERIAL_QUALIFIERS = {
+    "all",
+    "always",
+    "automatic",
+    "automatically",
+    "each",
+    "every",
+    "exclusive",
+    "exclusively",
+    "mandatory",
+    "must",
+    "never",
+    "only",
+    "specific",
+    "unlimited",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+}
+
 LEGAL_FACT_PATTERNS = (
     r"\barticle\s+\d+[A-Za-z]?\b",
     r"\bsection\s+\d+[A-Za-z]?\b",
+    r"\bclause\s*\(?\d+[A-Za-z]?\)?",
     r"\bchapter\s+[IVXLC]+\b",
     r"\bpart\s+[IVXLC]+\b",
     r"\b(?:supreme|high)\s+court\b",
@@ -142,6 +205,7 @@ def _tokenize(text: str) -> set[str]:
         "should",
         "could",
         "about",
+        "source",
         "an",
     }
 
@@ -150,11 +214,33 @@ def _tokenize(text: str) -> set[str]:
         text.lower(),
     )
 
-    return {
-        token
-        for token in tokens
-        if token not in stop_words
-    }
+    normalized_tokens = set()
+
+    for token in tokens:
+
+        if token in stop_words:
+            continue
+
+        token = TOKEN_EQUIVALENTS.get(
+            token,
+            token,
+        )
+
+        if token.endswith("ies") and len(token) > 4:
+            token = f"{token[:-3]}y"
+
+        elif (
+            token.endswith("s")
+            and not token.endswith("ss")
+            and len(token) > 4
+        ):
+            token = token[:-1]
+
+        normalized_tokens.add(
+            token
+        )
+
+    return normalized_tokens
 
 
 # ============================================================
@@ -366,31 +452,71 @@ def _extract_legal_identifiers(
 
     text = text.lower()
 
-    articles = set(
-        re.findall(
-            r"\barticle\s+\d+[a-z]?\b",
+    articles = {
+        f"article {value}"
+        for value in re.findall(
+            r"\barticle\s+(\d+[a-z]?)\b",
             text,
         )
-    )
+    }
 
-    sections = set(
-        re.findall(
-            r"\bsection\s+\d+[a-z]?\b",
+    sections = {
+        f"section {value}"
+        for value in re.findall(
+            r"\bsection\s+(\d+[a-z]?)\b",
             text,
         )
-    )
+    }
 
-    years = set(
-        re.findall(
-            r"\b20\d{2}\b",
+    clauses = {
+        f"clause {value}"
+        for value in re.findall(
+            r"\bclause\s*\(?\s*(\d+[a-z]?)\s*\)?",
             text,
         )
+    }
+
+    chapters = {
+        f"chapter {value}"
+        for value in re.findall(
+            r"\bchapter\s+([ivxlcdm]+|\d+[a-z]?)\b",
+            text,
+        )
+    }
+
+    parts = {
+        f"part {value}"
+        for value in re.findall(
+            r"\bpart\s+([ivxlcdm]+|\d+[a-z]?)\b",
+            text,
+        )
+    }
+
+    act_years = {
+        f"act {value}"
+        for value in re.findall(
+            r"\bact\s*,?\s*(?:of\s+)?((?:18|19|20)\d{2})\b",
+            text,
+        )
+    }
+
+    act_years.update(
+        {
+            f"act {value}"
+            for value in re.findall(
+                r"\b((?:18|19|20)\d{2})\s+act\b",
+                text,
+            )
+        }
     )
 
     return {
         "articles": articles,
         "sections": sections,
-        "years": years,
+        "clauses": clauses,
+        "chapters": chapters,
+        "parts": parts,
+        "act_years": act_years,
     }
 
 
@@ -406,8 +532,8 @@ def _identifier_consistency_score(
         - If claim has an Article, evidence should contain the same
           Article to receive identifier support.
         - Same for Section.
-        - If claim explicitly contains a year, evidence containing
-          that same year receives support.
+        - Clause, Chapter, Part, and an Act's explicit year are
+          checked in the same way.
 
     If the claim contains none of these identifiers, returns 0.0.
     """
@@ -446,16 +572,24 @@ def _identifier_consistency_score(
             / len(claim_ids["sections"])
         )
 
-    if claim_ids["years"]:
+    for category in (
+        "clauses",
+        "chapters",
+        "parts",
+        "act_years",
+    ):
+
+        if not claim_ids[category]:
+            continue
 
         matched = (
-            claim_ids["years"]
-            & evidence_ids["years"]
+            claim_ids[category]
+            & evidence_ids[category]
         )
 
         score_parts.append(
             len(matched)
-            / len(claim_ids["years"])
+            / len(claim_ids[category])
         )
 
     if not score_parts:
@@ -463,6 +597,461 @@ def _identifier_consistency_score(
 
     return sum(score_parts) / len(
         score_parts
+    )
+
+
+def _evidence_propositions(
+    text: str,
+) -> list[str]:
+    """Split evidence into small proposition-sized comparison units."""
+
+    text = _clean_text(
+        text
+    )
+
+    if not text:
+        return []
+
+    return [
+        _clean_text(part)
+        for part in re.split(
+            r"(?<=[.!?;])\s+|\n+",
+            text,
+        )
+        if _clean_text(part)
+    ]
+
+
+def _mask_legal_identifiers(
+    text: str,
+) -> str:
+    """Remove legal identifiers so their numbers do not look factual."""
+
+    patterns = (
+        r"\barticle\s+\d+[a-z]?\b",
+        r"\bsection\s+\d+[a-z]?\b",
+        r"\bclause\s*\(?\s*\d+[a-z]?\s*\)?",
+        r"\bchapter\s+(?:[ivxlcdm]+|\d+[a-z]?)\b",
+        r"\bpart\s+(?:[ivxlcdm]+|\d+[a-z]?)\b",
+        r"\bact\s*,?\s*(?:of\s+)?(?:18|19|20)\d{2}\b",
+        r"\b(?:18|19|20)\d{2}\s+act\b",
+    )
+
+    masked = text
+
+    for pattern in patterns:
+        masked = re.sub(
+            pattern,
+            " ",
+            masked,
+            flags=re.IGNORECASE,
+        )
+
+    return masked
+
+
+def _mask_reference_numbers(
+    text: str,
+) -> str:
+    """Remove page, case, petition, and citation numbers."""
+
+    patterns = (
+        r"\bpage\s+\d+(?:\s*[-–]\s*\d+)?\b",
+        r"\b(?:case|petition|appeal|application|diary)\s+"
+        r"(?:no\.?|number)?\s*\d+(?:[/-]\d+)*\b",
+        r"\b(?:no\.|nos\.|number)\s*\d+(?:[/-]\d+)*\b",
+        r"\b(?:slp|w\.p\.|wp|c\.a\.|ia|i\.a\.)\s*"
+        r"(?:\([a-z]+\))?\s*(?:no\.?)?\s*\d+(?:[/-]\d+)*\b",
+    )
+
+    masked = text
+
+    for pattern in patterns:
+        masked = re.sub(
+            pattern,
+            " ",
+            masked,
+            flags=re.IGNORECASE,
+        )
+
+    return masked
+
+
+def _proposition_tokens(
+    text: str,
+) -> set[str]:
+    """Return the non-identifier, non-numeric meaning of a proposition."""
+
+    text = _mask_legal_identifiers(
+        text
+    )
+
+    text = _mask_reference_numbers(
+        text
+    )
+
+    text = re.sub(
+        r"\b\d+(?:,\d{3})*(?:\.\d+)?%?\b",
+        " ",
+        text,
+    )
+
+    return _tokenize(
+        text
+    )
+
+
+def _context_similarity(
+    claim_text: str,
+    evidence_text: str,
+) -> tuple[float, int]:
+    """Compare propositions without letting identifiers drive overlap."""
+
+    claim_tokens = _proposition_tokens(
+        claim_text
+    )
+
+    evidence_tokens = _proposition_tokens(
+        evidence_text
+    )
+
+    if not claim_tokens:
+        return 0.0, 0
+
+    overlap = len(
+        claim_tokens
+        & evidence_tokens
+    )
+
+    return (
+        overlap / len(claim_tokens),
+        overlap,
+    )
+
+
+def _has_legal_identifier_contradiction(
+    claim: str,
+    evidence_text: str,
+) -> bool:
+    """Detect a wrong provision attached to the same proposition."""
+
+    claim_ids = _extract_legal_identifiers(
+        claim
+    )
+
+    propositions = _evidence_propositions(
+        evidence_text
+    )
+
+    for category, expected in claim_ids.items():
+
+        if not expected:
+            continue
+
+        matching_identifier_found = False
+        conflicting_identifier_found = False
+
+        for proposition in propositions:
+
+            actual = _extract_legal_identifiers(
+                proposition
+            )[category]
+
+            if not actual:
+                continue
+
+            context_score, overlap = _context_similarity(
+                claim,
+                proposition,
+            )
+
+            if (
+                context_score
+                < CONTRADICTION_CONTEXT_THRESHOLD
+                or overlap < 2
+            ):
+                continue
+
+            if expected & actual:
+                matching_identifier_found = True
+
+            elif expected.isdisjoint(actual):
+                conflicting_identifier_found = True
+
+        if (
+            conflicting_identifier_found
+            and not matching_identifier_found
+        ):
+            return True
+
+    return False
+
+
+def _normalize_numeric_value(
+    value: str,
+) -> str:
+    """Normalize a numeric expression for deterministic comparison."""
+
+    return re.sub(
+        r"[\s,]",
+        "",
+        value.lower(),
+    )
+
+
+def _extract_numeric_facts(
+    text: str,
+) -> list[dict[str, Any]]:
+    """Extract material numeric values with proposition context."""
+
+    facts: list[dict[str, Any]] = []
+
+    prepared_text = _mask_reference_numbers(
+        _mask_legal_identifiers(
+            text
+        )
+    )
+
+    for proposition in _evidence_propositions(
+        prepared_text
+    ):
+
+        masked = proposition
+
+        occupied: list[tuple[int, int]] = []
+
+        for match in re.finditer(
+            r"\b\d{1,2}[/-]\d{1,2}[/-](?:18|19|20)\d{2}\b",
+            masked,
+        ):
+
+            facts.append(
+                {
+                    "kind": "date",
+                    "value": _normalize_numeric_value(
+                        match.group(0)
+                    ),
+                    "context": proposition,
+                }
+            )
+
+            occupied.append(
+                match.span()
+            )
+
+        for match in re.finditer(
+            r"\b(?:18|19|20)\d{2}\b",
+            masked,
+        ):
+
+            facts.append(
+                {
+                    "kind": "year",
+                    "value": match.group(0),
+                    "context": proposition,
+                }
+            )
+
+            occupied.append(
+                match.span()
+            )
+
+        for match in re.finditer(
+            r"\b\d+(?:,\d{3})*(?:\.\d+)?%?\b",
+            masked,
+        ):
+
+            if any(
+                start <= match.start() < end
+                for start, end in occupied
+            ):
+                continue
+
+            value = match.group(0)
+
+            facts.append(
+                {
+                    "kind": (
+                        "percentage"
+                        if value.endswith("%")
+                        else "number"
+                    ),
+                    "value": _normalize_numeric_value(
+                        value
+                    ),
+                    "context": proposition,
+                }
+            )
+
+    return facts
+
+
+def _has_numeric_contradiction(
+    claim: str,
+    evidence_text: str,
+) -> bool:
+    """Detect conflicting values only for the same factual proposition."""
+
+    claim_facts = _extract_numeric_facts(
+        claim
+    )
+
+    evidence_facts = _extract_numeric_facts(
+        evidence_text
+    )
+
+    for claim_fact in claim_facts:
+
+        relevant: list[dict[str, Any]] = []
+
+        for evidence_fact in evidence_facts:
+
+            if evidence_fact["kind"] != claim_fact["kind"]:
+                continue
+
+            context_score, overlap = _context_similarity(
+                claim_fact["context"],
+                evidence_fact["context"],
+            )
+
+            if (
+                context_score
+                >= CONTRADICTION_CONTEXT_THRESHOLD
+                and overlap >= 2
+            ):
+                relevant.append(
+                    evidence_fact
+                )
+
+        if not relevant:
+            continue
+
+        if any(
+            item["value"] == claim_fact["value"]
+            for item in relevant
+        ):
+            continue
+
+        return True
+
+    return False
+
+
+def _has_unsupported_numeric_fact(
+    claim: str,
+    evidence_text: str,
+) -> bool:
+    """Detect a material claim number absent from matching evidence."""
+
+    claim_facts = _extract_numeric_facts(
+        claim
+    )
+
+    evidence_facts = _extract_numeric_facts(
+        evidence_text
+    )
+
+    for claim_fact in claim_facts:
+
+        supported = False
+
+        for evidence_fact in evidence_facts:
+
+            if (
+                evidence_fact["kind"] != claim_fact["kind"]
+                or evidence_fact["value"] != claim_fact["value"]
+            ):
+                continue
+
+            context_score, overlap = _context_similarity(
+                claim_fact["context"],
+                evidence_fact["context"],
+            )
+
+            claim_context = _proposition_tokens(
+                claim_fact["context"]
+            )
+
+            evidence_context = _proposition_tokens(
+                evidence_fact["context"]
+            )
+
+            if (
+                (
+                    context_score
+                    >= CONTRADICTION_CONTEXT_THRESHOLD
+                    and overlap >= 2
+                )
+                or (
+                    claim_context == evidence_context
+                    and overlap >= 1
+                )
+                or (
+                    not claim_context
+                    and not evidence_context
+                )
+            ):
+                supported = True
+                break
+
+        if not supported:
+            return True
+
+    return False
+
+
+def _has_material_unsupported_addition(
+    claim: str,
+    evidence_text: str,
+) -> bool:
+    """Detect important claim detail missing from otherwise related evidence."""
+
+    claim_tokens = _proposition_tokens(
+        claim
+    )
+
+    evidence_tokens = _proposition_tokens(
+        evidence_text
+    )
+
+    if not claim_tokens:
+        return False
+
+    matched = claim_tokens & evidence_tokens
+    unmatched = claim_tokens - evidence_tokens
+    coverage = len(matched) / len(
+        claim_tokens
+    )
+
+    if unmatched & MATERIAL_QUALIFIERS:
+        return len(matched) >= 2
+
+    return (
+        len(matched) >= 2
+        and len(unmatched) >= 2
+        and coverage < MATERIAL_COVERAGE_THRESHOLD
+    )
+
+
+def _has_explicit_contradiction(
+    claim: str,
+    evidence: dict,
+) -> bool:
+    """Return whether one evidence item clearly contradicts the claim."""
+
+    evidence_text = _evidence_text(
+        evidence
+    )
+
+    return (
+        _has_numeric_contradiction(
+            claim,
+            evidence_text,
+        )
+        or _has_legal_identifier_contradiction(
+            claim,
+            evidence_text,
+        )
     )
 
 
@@ -491,6 +1080,12 @@ def _overlap_score(
         claim_tokens
         & evidence_tokens
     )
+
+    if (
+        overlap == 1
+        and len(claim_tokens) >= 3
+    ):
+        return PARTIAL_SUPPORT_THRESHOLD - 0.001
 
     return overlap / len(
         claim_tokens
@@ -543,7 +1138,10 @@ def _support_score(
         for key in (
             "articles",
             "sections",
-            "years",
+            "clauses",
+            "chapters",
+            "parts",
+            "act_years",
         )
     )
 
@@ -556,25 +1154,70 @@ def _support_score(
         # Mismatched explicit identifiers should strongly
         # reduce support.
         if identifier_score == 0.0:
-            return min(
+            score = min(
                 overlap * 0.45,
                 1.0,
             )
 
-        return min(
-            0.65 * overlap
-            + 0.35 * identifier_score,
+        else:
+            score = min(
+                0.65 * overlap
+                + 0.35 * identifier_score,
+                1.0,
+            )
+
+            if identifier_score < 1.0:
+                score = min(
+                    score,
+                    STRONG_SUPPORT_THRESHOLD - 0.001,
+                )
+
+    else:
+
+        # ----------------------------------------------------
+        # Generic factual/general claim.
+        # ----------------------------------------------------
+
+        score = min(
+            overlap,
             1.0,
         )
 
     # --------------------------------------------------------
-    # Generic factual/general claim.
+    # Deterministic contradiction and completeness guards.
     # --------------------------------------------------------
 
-    return min(
-        overlap,
-        1.0,
-    )
+    if _has_numeric_contradiction(
+        claim,
+        evidence_text,
+    ):
+        return 0.0
+
+    if _has_legal_identifier_contradiction(
+        claim,
+        evidence_text,
+    ):
+        return 0.0
+
+    if (
+        score >= STRONG_SUPPORT_THRESHOLD
+        and _has_unsupported_numeric_fact(
+            claim,
+            evidence_text,
+        )
+    ):
+        return STRONG_SUPPORT_THRESHOLD - 0.001
+
+    if (
+        score >= STRONG_SUPPORT_THRESHOLD
+        and _has_material_unsupported_addition(
+            claim,
+            evidence_text,
+        )
+    ):
+        return STRONG_SUPPORT_THRESHOLD - 0.001
+
+    return score
 
 
 # ============================================================
@@ -694,9 +1337,25 @@ def verify_claims(
             else 0.0
         )
 
-        support = _classify_support(
-            best_score
+        explicit_contradiction = any(
+            _has_explicit_contradiction(
+                claim,
+                item,
+            )
+            for item in evidence
         )
+
+        if (
+            explicit_contradiction
+            and best_score < STRONG_SUPPORT_THRESHOLD
+        ):
+            best_score = 0.0
+            support = "unsupported"
+
+        else:
+            support = _classify_support(
+                best_score
+            )
 
         verified_claims.append(
             {
