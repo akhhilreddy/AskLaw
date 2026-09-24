@@ -45,6 +45,9 @@ export default function Documents() {
   const [deletingId, setDeletingId] = useState(null);
   const [deleteError, setDeleteError] = useState("");
   const inputRef = useRef(null);
+  const deleteDialogRef = useRef(null);
+  const deleteCancelRef = useRef(null);
+  const deleteTriggerRef = useRef(null);
 
   const loadDocuments = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -151,6 +154,66 @@ export default function Documents() {
     }
   };
 
+  const closeDeleteDialog = useCallback(() => {
+    if (deletingId) return;
+
+    const trigger = deleteTriggerRef.current;
+    setDeleteCandidate(null);
+
+    window.requestAnimationFrame(() => {
+      if (trigger?.isConnected) trigger.focus();
+    });
+  }, [deletingId]);
+
+  useEffect(() => {
+    if (!deleteCandidate) return undefined;
+
+    const dialog = deleteDialogRef.current;
+
+    if (!dialog?.contains(document.activeElement)) {
+      deleteCancelRef.current?.focus();
+    }
+
+    const handleDialogKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeDeleteDialog();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialog) return;
+
+      const focusableElements = Array.from(
+        dialog.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      } else if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleDialogKeyDown, true);
+    return () => document.removeEventListener("keydown", handleDialogKeyDown, true);
+  }, [closeDeleteDialog, deleteCandidate]);
+
   const handleDelete = async () => {
     if (!deleteCandidate || deletingId) return;
 
@@ -177,7 +240,7 @@ export default function Documents() {
 
   return (
     <AppLayout userName={userName} section="Documents">
-      <div className="document-page">
+      <div className="document-page" inert={Boolean(deleteCandidate)}>
         <header className="document-intro">
           <span className="eyebrow">Your research material</span>
           <h1>Documents</h1>
@@ -390,7 +453,8 @@ export default function Documents() {
                     <button
                       type="button"
                       className="document-delete-button"
-                      onClick={() => {
+                      onClick={(event) => {
+                        deleteTriggerRef.current = event.currentTarget;
                         setDeleteError("");
                         setDeleteCandidate(document);
                       }}
@@ -425,6 +489,7 @@ export default function Documents() {
       {deleteCandidate && (
         <div className="modal-backdrop" role="presentation">
           <div
+            ref={deleteDialogRef}
             className="modal delete-document-modal"
             role="dialog"
             aria-modal="true"
@@ -442,8 +507,9 @@ export default function Documents() {
             )}
             <div className="modal-actions">
               <button
+                ref={deleteCancelRef}
                 type="button"
-                onClick={() => setDeleteCandidate(null)}
+                onClick={closeDeleteDialog}
                 disabled={Boolean(deletingId)}
               >
                 Cancel
