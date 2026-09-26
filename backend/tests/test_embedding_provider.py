@@ -58,6 +58,48 @@ class FakeGeminiModels:
 
 
 class EmbeddingProviderTests(unittest.TestCase):
+    def test_local_qdrant_allows_empty_api_key(self):
+        local_settings = Settings(
+            SECRET_KEY="test-secret-key",
+            ALGORITHM="HS256",
+            ACCESS_TOKEN_EXPIRE_MINUTES=15,
+            REFRESH_TOKEN_EXPIRE_DAYS=7,
+            QDRANT_URL="http://localhost:6333",
+            QDRANT_API_KEY="  ",
+            _env_file=None,
+        )
+
+        self.assertIsNone(local_settings.qdrant_api_key)
+
+    def test_production_qdrant_cloud_requires_api_key(self):
+        with self.assertRaisesRegex(ValidationError, "QDRANT_API_KEY"):
+            Settings(
+                APP_ENV="production",
+                SECRET_KEY="a-secure-production-secret-key-value",
+                ALGORITHM="HS256",
+                ACCESS_TOKEN_EXPIRE_MINUTES=15,
+                REFRESH_TOKEN_EXPIRE_DAYS=7,
+                COOKIE_SECURE=True,
+                QDRANT_URL="https://example.cloud.qdrant.io",
+                QDRANT_API_KEY="",
+                _env_file=None,
+            )
+
+    def test_production_qdrant_cloud_accepts_api_key(self):
+        cloud_settings = Settings(
+            APP_ENV="production",
+            SECRET_KEY="a-secure-production-secret-key-value",
+            ALGORITHM="HS256",
+            ACCESS_TOKEN_EXPIRE_MINUTES=15,
+            REFRESH_TOKEN_EXPIRE_DAYS=7,
+            COOKIE_SECURE=True,
+            QDRANT_URL="https://example.cloud.qdrant.io",
+            QDRANT_API_KEY="test-qdrant-key",
+            _env_file=None,
+        )
+
+        self.assertEqual(cloud_settings.qdrant_api_key, "test-qdrant-key")
+
     def test_gemini_settings_require_api_key(self):
         with self.assertRaisesRegex(ValidationError, "GEMINI_API_KEY"):
             Settings(

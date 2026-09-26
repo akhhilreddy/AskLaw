@@ -31,6 +31,7 @@ GEMINI_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 qdrant_client = QdrantClient(
     url=QDRANT_URL,
+    api_key=settings.qdrant_api_key,
     check_compatibility=False,
 )
 

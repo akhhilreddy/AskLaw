@@ -33,6 +33,7 @@ SEMANTIC_CANDIDATES = 50
 
 qdrant_client = QdrantClient(
     url=QDRANT_URL,
+    api_key=settings.qdrant_api_key,
     check_compatibility=False,
 )
 

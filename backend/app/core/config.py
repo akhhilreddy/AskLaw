@@ -1,4 +1,5 @@
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DATABASE: str = "asklaw"
     QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_NAME: str = "asklaw_documents"
     EMBEDDING_PROVIDER: Literal["local", "gemini"] = "local"
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -49,6 +51,11 @@ class Settings(BaseSettings):
             if origin.strip()
         ]
 
+    @property
+    def qdrant_api_key(self) -> str | None:
+        api_key = self.QDRANT_API_KEY.strip()
+        return api_key or None
+
     @model_validator(mode="after")
     def validate_security_settings(self):
         origins = self.cors_origins
@@ -67,6 +74,18 @@ class Settings(BaseSettings):
             )
 
         if self.APP_ENV.lower() in {"prod", "production"}:
+            qdrant_hostname = (
+                urlparse(self.QDRANT_URL).hostname or ""
+            ).lower()
+
+            if (
+                qdrant_hostname.endswith(".cloud.qdrant.io")
+                and self.qdrant_api_key is None
+            ):
+                raise ValueError(
+                    "QDRANT_API_KEY is required for Qdrant Cloud in production"
+                )
+
             if not self.COOKIE_SECURE:
                 raise ValueError("COOKIE_SECURE must be enabled in production")
 
