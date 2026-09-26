@@ -8,8 +8,9 @@ from app.core.celery_app import celery_app
 from app.db.mongodb import document_collection
 
 from app.services.vector_service import (
+    NonRetryableEmbeddingError,
     create_collection,
-    store_chunk,
+    store_chunks,
 )
 
 
@@ -111,7 +112,7 @@ def index_document(
         # INDEX EVERY CHUNK
         # -------------------------------------------------
 
-        indexed_count = 0
+        indexable_chunks = []
 
         for chunk in chunks:
 
@@ -137,17 +138,38 @@ def index_document(
                 )
             )
 
-            store_chunk(
-                chunk_id=point_id,
-                text=chunk_text,
-                document_id=document_id,
-                user_id=user_id,
-                filename=filename,
-                chunk_index=chunk_index,
-                page_number=page_number,
+            indexable_chunks.append(
+                {
+                    "chunk_id": point_id,
+                    "text": chunk_text,
+                    "document_id": document_id,
+                    "user_id": user_id,
+                    "filename": filename,
+                    "chunk_index": chunk_index,
+                    "page_number": page_number,
+                }
             )
 
-            indexed_count += 1
+        indexed_count = store_chunks(indexable_chunks)
+
+    except NonRetryableEmbeddingError:
+        logger.exception(
+            "Document indexing failed with a non-retryable embedding error "
+            "for document_id=%s",
+            document_id,
+        )
+        document_collection.update_one(
+            {
+                "_id": object_id,
+                "user_id": user_id,
+                "indexing_task_id": task_id,
+            },
+            {
+                "$set": {"status": "failed"},
+                "$unset": {"indexing_task_id": ""},
+            },
+        )
+        raise
 
     except Exception as exc:
         logger.exception(

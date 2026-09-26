@@ -1,0 +1,20 @@
+# Direct, pinned production dependencies for the Gemini embedding image.
+# Docker also uses requirements.txt as a constraints file for shared
+# transitive versions without installing its local-model-only packages.
+bcrypt==5.0.0
+celery==5.6.3
+email-validator==2.3.0
+fastapi==0.139.0
+google-genai==2.15.0
+groq==1.6.0
+httpx==0.28.1
+mcp==2.1.1
+pydantic==2.13.4
+pydantic-settings==2.14.2
+pymongo==4.17.0
+pypdf==6.16.1
+python-jose==3.5.0
+python-multipart==0.0.32
+qdrant-client==1.19.0
+redis==8.1.0
+uvicorn==0.51.0

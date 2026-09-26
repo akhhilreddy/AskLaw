@@ -292,13 +292,15 @@ Keep backend runtime configuration in `backend/.env`, using `backend/.env.exampl
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime | Yes | `30` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh-token and cookie lifetime | Yes | `7` |
 | `ALLOW_LEGACY_UNTYPED_REFRESH_TOKENS` | Temporary compatibility for old refresh cookies | No | `true` during migration; then `false` |
-| `GEMINI_API_KEY` | Reserved setting; unused by the current answer pipeline | No | leave empty |
+| `GEMINI_API_KEY` | Gemini embedding credential | Required when `EMBEDDING_PROVIDER=gemini` | leave empty for local embeddings |
 | `GROQ_API_KEY` | Groq credential for generated answers | Required for chat answers | `your-groq-key` |
 | `MONGODB_URL` | MongoDB connection URI | No; local default exists | `mongodb://localhost:27017` |
 | `MONGODB_DATABASE` | MongoDB database name | No; local default exists | `asklaw` |
 | `QDRANT_URL` | Qdrant HTTP endpoint | No; local default exists | `http://localhost:6333` |
 | `QDRANT_COLLECTION_NAME` | Document-vector collection | No; local default exists | `asklaw_documents` |
+| `EMBEDDING_PROVIDER` | Document/query embedding implementation | No; defaults to local | `local` or `gemini` |
 | `EMBEDDING_MODEL` | Sentence Transformers model identifier | No; local default exists | `sentence-transformers/all-MiniLM-L6-v2` |
+| `GEMINI_EMBEDDING_BATCH_SIZE` | Maximum texts in one Gemini embedding request | No | `32` |
 | `CELERY_BROKER_URL` | Celery broker | No; local default exists | `redis://localhost:6379/0` |
 | `CELERY_RESULT_BACKEND` | Celery result backend | No; local default exists | `redis://localhost:6379/1` |
 | `CORS_ORIGINS` | Comma-separated trusted browser origins; wildcard is rejected | No; local default exists | `http://localhost:5173` |
@@ -517,7 +519,9 @@ These controls describe the current local implementation. They do not make the r
 foundation. They separate the frontend/HTTPS proxy, API, worker, MCP, and
 stateful services; keep internal services unpublished; use health checks,
 rotating logs, pinned runtime tags, and persistent volumes; and pre-cache the
-embedding model.
+embedding model for local-provider builds. The default production example uses
+Gemini embeddings and a separate 3072-dimensional Qdrant collection, avoiding
+PyTorch and local model weights in that image.
 
 This is not a public deployment. OCI provisioning, DNS, real secrets,
 production origins, firewall rules, rate limiting, image scanning, monitoring,

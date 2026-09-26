@@ -10,6 +10,7 @@ x-backend: &backend
     context: ./backend
     dockerfile: Dockerfile
     args:
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
       EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
   restart: unless-stopped
   environment: &backend-environment
@@ -21,13 +22,15 @@ x-backend: &backend
     ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
     REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
     ALLOW_LEGACY_UNTYPED_REFRESH_TOKENS: ${ALLOW_LEGACY_UNTYPED_REFRESH_TOKENS:-false}
-    GEMINI_API_KEY: ""
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     GROQ_API_KEY: ${GROQ_API_KEY:?Set GROQ_API_KEY in the production environment}
     MONGODB_URL: mongodb://mongodb:27017
     MONGODB_DATABASE: ${MONGODB_DATABASE:-asklaw}
     QDRANT_URL: http://qdrant:6333
-    QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-asklaw_documents}
+    QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-asklaw_documents_gemini}
+    EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
     EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+    GEMINI_EMBEDDING_BATCH_SIZE: ${GEMINI_EMBEDDING_BATCH_SIZE:-32}
     CELERY_BROKER_URL: redis://redis:6379/0
     CELERY_RESULT_BACKEND: redis://redis:6379/1
     CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to the exact frontend origin}

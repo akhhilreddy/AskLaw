@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     MONGODB_DATABASE: str = "asklaw"
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION_NAME: str = "asklaw_documents"
+    EMBEDDING_PROVIDER: Literal["local", "gemini"] = "local"
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    GEMINI_EMBEDDING_BATCH_SIZE: int = Field(default=32, ge=1, le=100)
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CORS_ORIGINS: str = "http://localhost:5173"
@@ -50,6 +52,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_settings(self):
         origins = self.cors_origins
+
+        if (
+            self.EMBEDDING_PROVIDER == "gemini"
+            and not self.GEMINI_API_KEY.strip()
+        ):
+            raise ValueError(
+                "GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini"
+            )
 
         if not origins or "*" in origins:
             raise ValueError(

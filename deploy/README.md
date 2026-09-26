@@ -8,7 +8,9 @@ environment file.
 
 `compose.production.yml` builds two application images:
 
-- one Python 3.12.11 backend image shared by FastAPI, Celery, and MCP;
+- one Python 3.12.11 backend image shared by FastAPI, Celery, and MCP. The
+  production default uses Gemini embeddings and excludes PyTorch,
+  SentenceTransformer, and local model weights;
 - one Node 22.23.2 build followed by a Caddy 2.11.4 static runtime for the
   frontend and HTTPS reverse proxy.
 
@@ -39,20 +41,37 @@ docker compose \
 `VITE_API_BASE_URL` is a Vite build-time value. Rebuild the frontend image when
 the API hostname changes.
 
+The production example selects `EMBEDDING_PROVIDER=gemini`, collection
+`asklaw_documents_gemini`, and 32 inputs per Gemini embedding request. Gemini
+requires `GEMINI_API_KEY`. The existing `asklaw_documents` collection contains
+384-dimensional MiniLM vectors and must never be reused for Gemini's
+3072-dimensional vectors. AskLaw validates an existing collection's dimension
+and fails instead of resizing or recreating it.
+
+To build the existing local embedding path instead, set
+`EMBEDDING_PROVIDER=local` and `QDRANT_COLLECTION_NAME=asklaw_documents` in the
+production environment before building. That image intentionally includes the
+CPU-only PyTorch/SentenceTransformer stack and pre-caches MiniLM.
+
 ## Runtime decisions
 
-- FastAPI uses one Uvicorn worker initially because each process loads the
-  embedding model. Scale only after measuring memory and streaming load.
+- FastAPI uses one Uvicorn worker initially. Local-provider processes load an
+  embedding model; Gemini-provider processes do not. Scale only after measuring
+  memory and streaming load.
 - Celery uses Linux `prefork`, concurrency 1, and recycles a child after 25
   tasks. This is conservative for a small ARM VM and avoids the macOS-only
   development `solo` choice.
-- The backend image downloads `all-MiniLM-L6-v2` during image construction and
-  runs with Hugging Face offline mode enabled. Runtime restarts therefore do
-  not depend on an external model download.
-- The normal requirements remain cross-platform for local development. Linux
-  containers constrain Torch 2.13.0 to the official `+cpu` wheel because the
-  default ARM64 PyPI wheel also resolves large CUDA 13 dependencies that an OCI
-  Always Free CPU VM cannot use.
+- Gemini builds install the focused `requirements-gemini.txt` dependency set
+  and do not download a local model. Local builds use the normal requirements,
+  download `all-MiniLM-L6-v2` during image construction, and run with Hugging
+  Face offline mode enabled.
+- The normal requirements remain cross-platform for local development. Local
+  Linux containers constrain Torch 2.13.0 to the official `+cpu` wheel because
+  the default ARM64 PyPI wheel also resolves large CUDA 13 dependencies that an
+  OCI Always Free CPU VM cannot use.
+- Document chunks are embedded and written to Qdrant in bounded batches.
+  Transient Gemini failures use finite exponential backoff; authentication and
+  validation failures are not retried indefinitely.
 - Redis uses AOF with `everysec` syncing and `noeviction` so queued indexing
   work is not intentionally evicted under memory pressure.
 - Docker JSON logs rotate at 10 MiB with three files per service.
