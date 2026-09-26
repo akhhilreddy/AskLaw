@@ -43,9 +43,10 @@ RUN if [ "${EMBEDDING_PROVIDER}" = "local" ]; then \
     fi
 
 COPY app ./app
-COPY docker/api_healthcheck.py docker/mcp_healthcheck.py ./docker/
+COPY docker/api_healthcheck.py docker/mcp_healthcheck.py docker/start.sh ./docker/
 
-RUN chown -R asklaw:asklaw /app
+RUN chmod 0755 /app/docker/start.sh \
+    && chown -R asklaw:asklaw /app
 
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
@@ -54,4 +55,4 @@ USER asklaw
 
 EXPOSE 8000 8001
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["./docker/start.sh"]
