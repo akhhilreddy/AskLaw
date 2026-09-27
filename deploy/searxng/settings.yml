@@ -1,8 +1,4 @@
-use_default_settings:
-  engines:
-    remove:
-      - ahmia
-      - torch
+use_default_settings: true
 
 general:
   debug: false
@@ -17,10 +13,11 @@ search:
 
 server:
   bind_address: "0.0.0.0"
-  port: 8080
+  port: 10000
   limiter: false
   public_instance: false
   image_proxy: false
 
-# The required cryptographic key is supplied at runtime through
-# SEARXNG_SECRET. No production secret belongs in this file.
+# Runtime values override the matching server settings through
+# SEARXNG_SECRET, SEARXNG_BASE_URL, SEARXNG_PORT, and
+# SEARXNG_BIND_ADDRESS. No production secret belongs in this file.
