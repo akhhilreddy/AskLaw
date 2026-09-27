@@ -866,7 +866,7 @@ async def retrieve_for_query(
     Returns:
 
         {
-            "route": "rag" | "web" | "hybrid",
+            "route": "conversation" | "rag" | "web" | "hybrid",
             "rag_results": [...],
             "web_results": [...]
         }
@@ -884,6 +884,18 @@ async def retrieve_for_query(
         )
         else str(route)
     )
+
+    # ========================================================
+    # CASUAL CONVERSATION
+    # ========================================================
+
+    if route_value == "conversation":
+
+        return {
+            "route": "conversation",
+            "rag_results": [],
+            "web_results": [],
+        }
 
     # ========================================================
     # RAG

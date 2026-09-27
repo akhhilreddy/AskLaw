@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import CodeBlock from "./CodeBlock";
 import MessageActions from "./MessageActions";
+import { isResearchRoute } from "./chatPresentation";
 
 const routeLabels = {
   rag: "Document Research",
@@ -183,6 +184,7 @@ function Verification({ verification }) {
 export default function ChatMessage({ message }) {
   const isUser = message.role === "user";
   const route = message.route?.toLowerCase();
+  const hasResearchRoute = isResearchRoute(route);
   const RouteIcon =
     route === "web" ? Globe2 : route === "hybrid" ? Layers3 : BookOpen;
 
@@ -233,7 +235,7 @@ export default function ChatMessage({ message }) {
             <Sources sources={message.sources} route={route} />
           ) : (
             message.isComplete &&
-            route && (
+            hasResearchRoute && (
               <p className="no-sources">No supporting sources were returned.</p>
             )
           )}
