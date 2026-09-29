@@ -83,6 +83,7 @@ class EmbeddingProviderTests(unittest.TestCase):
                 QDRANT_URL="https://example.cloud.qdrant.io",
                 QDRANT_API_KEY="",
                 SEARXNG_URL="https://search.example.com/search",
+                FRONTEND_URL="https://asklaw.example",
                 _env_file=None,
             )
 
@@ -97,6 +98,7 @@ class EmbeddingProviderTests(unittest.TestCase):
             QDRANT_URL="https://example.cloud.qdrant.io",
             QDRANT_API_KEY="test-qdrant-key",
             SEARXNG_URL="https://search.example.com/search",
+            FRONTEND_URL="https://asklaw.example",
             RESEND_API_KEY="test-resend-key",
             EMAIL_FROM="AskLAW <auth@example.com>",
             _env_file=None,

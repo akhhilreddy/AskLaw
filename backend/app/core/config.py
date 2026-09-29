@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     EMAIL_OTP_EXPIRE_MINUTES: int = Field(default=10, ge=5, le=30)
     EMAIL_OTP_MAX_ATTEMPTS: int = Field(default=5, ge=3, le=10)
     EMAIL_OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, ge=30, le=300)
+    FRONTEND_URL: str = "http://localhost:5173"
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
+    GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = Field(default=10, ge=5, le=30)
+    GOOGLE_OAUTH_EXCHANGE_EXPIRE_MINUTES: int = Field(default=2, ge=1, le=10)
     MAX_DOCUMENT_UPLOAD_BYTES: int = Field(default=20 * 1024 * 1024, gt=0)
     MAX_DOCUMENT_PAGES: int = Field(default=500, gt=0)
     MAX_DOCUMENT_TEXT_BYTES: int = Field(default=5 * 1024 * 1024, gt=0)
@@ -66,10 +72,55 @@ class Settings(BaseSettings):
     def email_otp_secret(self) -> str:
         return self.EMAIL_OTP_SECRET.strip() or self.SECRET_KEY
 
+    @property
+    def google_oauth_enabled(self) -> bool:
+        return all(
+            value.strip()
+            for value in (
+                self.GOOGLE_CLIENT_ID,
+                self.GOOGLE_CLIENT_SECRET,
+                self.GOOGLE_REDIRECT_URI,
+            )
+        )
+
     @model_validator(mode="after")
     def validate_security_settings(self):
         origins = self.cors_origins
         searxng_url = urlparse(self.SEARXNG_URL)
+        frontend_url = urlparse(self.FRONTEND_URL)
+        google_redirect_uri = urlparse(self.GOOGLE_REDIRECT_URI)
+
+        if (
+            frontend_url.scheme not in {"http", "https"}
+            or not frontend_url.hostname
+            or frontend_url.username
+            or frontend_url.password
+            or frontend_url.params
+            or frontend_url.query
+            or frontend_url.fragment
+            or frontend_url.path not in {"", "/"}
+        ):
+            raise ValueError("FRONTEND_URL must be an HTTP(S) origin")
+
+        google_values = (
+            self.GOOGLE_CLIENT_ID.strip(),
+            self.GOOGLE_CLIENT_SECRET.strip(),
+            self.GOOGLE_REDIRECT_URI.strip(),
+        )
+        if any(google_values) and not all(google_values):
+            raise ValueError(
+                "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI must be configured together"
+            )
+        if self.google_oauth_enabled and (
+            google_redirect_uri.scheme not in {"http", "https"}
+            or not google_redirect_uri.hostname
+            or google_redirect_uri.username
+            or google_redirect_uri.password
+            or google_redirect_uri.params
+            or google_redirect_uri.query
+            or google_redirect_uri.fragment
+        ):
+            raise ValueError("GOOGLE_REDIRECT_URI must be a valid HTTP(S) URL")
 
         if (
             searxng_url.scheme not in {"http", "https"}
@@ -103,6 +154,7 @@ class Settings(BaseSettings):
             searxng_hostname = (
                 searxng_url.hostname or ""
             ).lower()
+            frontend_hostname = (frontend_url.hostname or "").lower()
 
             if searxng_hostname in {
                 "127.0.0.1",
@@ -112,6 +164,21 @@ class Settings(BaseSettings):
             }:
                 raise ValueError(
                     "SEARXNG_URL cannot use a loopback address in production"
+                )
+
+            if frontend_hostname in {
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "::1",
+            }:
+                raise ValueError(
+                    "FRONTEND_URL cannot use a loopback address in production"
+                )
+
+            if self.google_oauth_enabled and google_redirect_uri.scheme != "https":
+                raise ValueError(
+                    "GOOGLE_REDIRECT_URI must use HTTPS in production"
                 )
 
             if (

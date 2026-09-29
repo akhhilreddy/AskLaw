@@ -10,6 +10,7 @@ user_collection = db["users"]
 conversation_collection = db["conversations"]
 document_collection = db["documents"]
 auth_code_collection = db["auth_codes"]
+oauth_exchange_collection = db["oauth_exchanges"]
 
 
 def ensure_indexes():
@@ -19,6 +20,12 @@ def ensure_indexes():
         [("email", 1)],
         name="users_email_unique",
         unique=True,
+    )
+    user_collection.create_index(
+        [("google_sub", 1)],
+        name="users_google_sub_unique",
+        unique=True,
+        sparse=True,
     )
 
     document_collection.create_index(
@@ -37,5 +44,15 @@ def ensure_indexes():
     auth_code_collection.create_index(
         [("expires_at", 1)],
         name="auth_codes_expiry_ttl",
+        expireAfterSeconds=0,
+    )
+    oauth_exchange_collection.create_index(
+        [("code_hash", 1)],
+        name="oauth_exchanges_code_hash_unique",
+        unique=True,
+    )
+    oauth_exchange_collection.create_index(
+        [("expires_at", 1)],
+        name="oauth_exchanges_expiry_ttl",
         expireAfterSeconds=0,
     )

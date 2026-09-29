@@ -1,5 +1,7 @@
+import hmac
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter
 from fastapi import Response
@@ -14,8 +16,10 @@ from app.utils.security import (
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import Depends
 from fastapi import HTTPException, status
+from fastapi.responses import RedirectResponse
 from app.schemas.auth import (
     EmailRequest,
+    GoogleExchangeRequest,
     ResetPasswordRequest,
     SignUpRequest,
     UserLogin,
@@ -33,6 +37,15 @@ from app.services.auth_code_service import (
     issue_code,
 )
 from app.services.email_service import EmailDeliveryError
+from app.services.google_oauth_service import (
+    GoogleOAuthError,
+    build_authorization_url,
+    consume_exchange_code,
+    create_exchange_code,
+    exchange_google_code,
+    find_or_create_google_user,
+)
+from app.utils.security import create_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,6 +53,8 @@ logger = logging.getLogger(__name__)
 
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/auth"
+GOOGLE_STATE_COOKIE_NAME = "google_oauth_state"
+GOOGLE_STATE_COOKIE_PATH = "/auth/google"
 
 
 def require_trusted_origin(request: Request):
@@ -90,6 +105,109 @@ def _ensure_verified(user: dict) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Verify your email before signing in",
         )
+
+
+def _google_frontend_redirect(**parameters: str) -> str:
+    base_url = f"{settings.FRONTEND_URL.rstrip('/')}/auth/google/callback"
+    return f"{base_url}?{urlencode(parameters)}"
+
+
+@router.get("/providers")
+def auth_providers():
+    return {"google": settings.google_oauth_enabled}
+
+
+@router.get("/google/start")
+def google_start():
+    if not settings.google_oauth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in is not configured",
+        )
+
+    state_token = create_token(
+        {"token_type": "google_oauth_state"},
+        timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES),
+    )
+    response = RedirectResponse(
+        build_authorization_url(state_token),
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+    response.set_cookie(
+        key=GOOGLE_STATE_COOKIE_NAME,
+        value=state_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        path=GOOGLE_STATE_COOKIE_PATH,
+        max_age=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES * 60,
+    )
+    return response
+
+
+@router.get("/google/callback")
+def google_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    google_state_cookie: str | None = Cookie(
+        default=None,
+        alias=GOOGLE_STATE_COOKIE_NAME,
+    ),
+):
+    if error or not code or not state or not google_state_cookie:
+        destination = _google_frontend_redirect(error="google_auth_failed")
+    else:
+        try:
+            if not hmac.compare_digest(state, google_state_cookie):
+                raise GoogleOAuthError("OAuth state mismatch")
+            state_payload = jwt.decode(
+                state,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+            )
+            if state_payload.get("token_type") != "google_oauth_state":
+                raise GoogleOAuthError("Invalid OAuth state")
+
+            profile = exchange_google_code(code)
+            user = find_or_create_google_user(profile)
+            exchange_code = create_exchange_code(user["_id"])
+            destination = _google_frontend_redirect(code=exchange_code)
+        except (JWTError, GoogleOAuthError):
+            destination = _google_frontend_redirect(error="google_auth_failed")
+
+    response = RedirectResponse(
+        destination,
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    response.delete_cookie(
+        key=GOOGLE_STATE_COOKIE_NAME,
+        path=GOOGLE_STATE_COOKIE_PATH,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+    )
+    return response
+
+
+@router.post(
+    "/google/exchange",
+    dependencies=[Depends(require_trusted_origin)],
+)
+def google_exchange(payload: GoogleExchangeRequest, response: Response):
+    user = consume_exchange_code(payload.code)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired Google sign-in code",
+        )
+
+    token_payload = _token_payload(user)
+    access_token = create_access_token(data=token_payload)
+    refresh_token = create_refresh_token(data=token_payload)
+    set_refresh_cookie(response, refresh_token)
+    return {"access_token": access_token, "token_type": "bearer"}
+
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 def signup(user: SignUpRequest):

@@ -39,6 +39,7 @@ class EmailAuthenticationRouteTests(unittest.TestCase):
                 COOKIE_SECURE=True,
                 CORS_ORIGINS="https://asklaw.example",
                 SEARXNG_URL="https://search.example.com/search",
+                FRONTEND_URL="https://asklaw.example",
                 RESEND_API_KEY="",
                 EMAIL_FROM="",
                 _env_file=None,

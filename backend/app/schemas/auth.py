@@ -50,3 +50,7 @@ class ResetPasswordRequest(EmailRequest):
         if len(password.encode("utf-8")) > 72:
             raise ValueError("Password must be at most 72 UTF-8 bytes")
         return password
+
+
+class GoogleExchangeRequest(BaseModel):
+    code: Annotated[str, StringConstraints(min_length=32, max_length=256)]

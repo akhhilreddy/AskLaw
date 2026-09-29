@@ -31,6 +31,7 @@ def make_settings(**overrides):
         "CORS_ORIGINS": "http://localhost:5173",
         "COOKIE_SECURE": False,
         "SEARXNG_URL": "http://127.0.0.1:8080/search",
+        "FRONTEND_URL": "http://localhost:5173",
         "RESEND_API_KEY": "test-resend-key",
         "EMAIL_FROM": "AskLAW <auth@example.com>",
     }
@@ -85,6 +86,7 @@ class SearxngConfigurationTests(unittest.TestCase):
             SEARXNG_URL=(
                 "https://asklaw-searxng.onrender.com/search"
             ),
+            FRONTEND_URL="https://asklaw.example",
         )
         self.assertEqual(
             settings.SEARXNG_URL,

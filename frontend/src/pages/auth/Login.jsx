@@ -5,6 +5,7 @@ import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import { login } from "../../services/authService";
+import GoogleAuthButton from "../../components/auth/GoogleAuthButton";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -74,6 +75,7 @@ export default function Login() {
           )}
           <Button type="submit" disabled={loading}>{loading ? "Signing in…" : "Sign in"}</Button>
         </form>
+        <GoogleAuthButton />
         <div className="auth-switch">New to AskLAW? <Link className="text-link" to="/signup">Create an account</Link></div>
       </Card>
     </AuthLayout>
