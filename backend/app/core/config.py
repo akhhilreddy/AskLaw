@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_settings(self):
         origins = self.cors_origins
+        searxng_url = urlparse(self.SEARXNG_URL)
+
+        if (
+            searxng_url.scheme not in {"http", "https"}
+            or not searxng_url.hostname
+            or searxng_url.path != "/search"
+            or searxng_url.params
+            or searxng_url.query
+            or searxng_url.fragment
+        ):
+            raise ValueError(
+                "SEARXNG_URL must be an HTTP(S) URL ending exactly in /search"
+            )
 
         if (
             self.EMBEDDING_PROVIDER == "gemini"
@@ -77,6 +90,19 @@ class Settings(BaseSettings):
             qdrant_hostname = (
                 urlparse(self.QDRANT_URL).hostname or ""
             ).lower()
+            searxng_hostname = (
+                searxng_url.hostname or ""
+            ).lower()
+
+            if searxng_hostname in {
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "::1",
+            }:
+                raise ValueError(
+                    "SEARXNG_URL cannot use a loopback address in production"
+                )
 
             if (
                 qdrant_hostname.endswith(".cloud.qdrant.io")

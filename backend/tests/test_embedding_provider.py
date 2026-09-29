@@ -82,6 +82,7 @@ class EmbeddingProviderTests(unittest.TestCase):
                 COOKIE_SECURE=True,
                 QDRANT_URL="https://example.cloud.qdrant.io",
                 QDRANT_API_KEY="",
+                SEARXNG_URL="https://search.example.com/search",
                 _env_file=None,
             )
 
@@ -95,6 +96,7 @@ class EmbeddingProviderTests(unittest.TestCase):
             COOKIE_SECURE=True,
             QDRANT_URL="https://example.cloud.qdrant.io",
             QDRANT_API_KEY="test-qdrant-key",
+            SEARXNG_URL="https://search.example.com/search",
             _env_file=None,
         )
 
