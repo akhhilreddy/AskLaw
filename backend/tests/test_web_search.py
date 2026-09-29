@@ -31,6 +31,8 @@ def make_settings(**overrides):
         "CORS_ORIGINS": "http://localhost:5173",
         "COOKIE_SECURE": False,
         "SEARXNG_URL": "http://127.0.0.1:8080/search",
+        "RESEND_API_KEY": "test-resend-key",
+        "EMAIL_FROM": "AskLAW <auth@example.com>",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)

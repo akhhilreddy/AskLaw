@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CORS_ORIGINS: str = "http://localhost:5173"
     COOKIE_SECURE: bool = False
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = ""
+    EMAIL_OTP_SECRET: str = ""
+    EMAIL_OTP_EXPIRE_MINUTES: int = Field(default=10, ge=5, le=30)
+    EMAIL_OTP_MAX_ATTEMPTS: int = Field(default=5, ge=3, le=10)
+    EMAIL_OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, ge=30, le=300)
     MAX_DOCUMENT_UPLOAD_BYTES: int = Field(default=20 * 1024 * 1024, gt=0)
     MAX_DOCUMENT_PAGES: int = Field(default=500, gt=0)
     MAX_DOCUMENT_TEXT_BYTES: int = Field(default=5 * 1024 * 1024, gt=0)
@@ -55,6 +61,10 @@ class Settings(BaseSettings):
     def qdrant_api_key(self) -> str | None:
         api_key = self.QDRANT_API_KEY.strip()
         return api_key or None
+
+    @property
+    def email_otp_secret(self) -> str:
+        return self.EMAIL_OTP_SECRET.strip() or self.SECRET_KEY
 
     @model_validator(mode="after")
     def validate_security_settings(self):
@@ -114,6 +124,11 @@ class Settings(BaseSettings):
 
             if not self.COOKIE_SECURE:
                 raise ValueError("COOKIE_SECURE must be enabled in production")
+
+            if not self.RESEND_API_KEY.strip() or not self.EMAIL_FROM.strip():
+                raise ValueError(
+                    "RESEND_API_KEY and EMAIL_FROM are required in production"
+                )
 
             if (
                 len(self.SECRET_KEY) < 32

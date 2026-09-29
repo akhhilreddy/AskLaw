@@ -9,6 +9,7 @@ SignupName = Annotated[
 ]
 SignupPassword = Annotated[str, Field(min_length=8, max_length=72)]
 LoginPassword = Annotated[str, Field(min_length=1, max_length=72)]
+EmailCode = Annotated[str, StringConstraints(pattern=r"^\d{6}$")]
 
 
 class PasswordByteLimitMixin:
@@ -29,3 +30,23 @@ class SignUpRequest(PasswordByteLimitMixin, BaseModel):
 class UserLogin(PasswordByteLimitMixin, BaseModel):
     email: EmailStr
     password: LoginPassword
+
+
+class EmailRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyEmailRequest(EmailRequest):
+    code: EmailCode
+
+
+class ResetPasswordRequest(EmailRequest):
+    code: EmailCode
+    new_password: SignupPassword
+
+    @field_validator("new_password")
+    @classmethod
+    def password_must_fit_bcrypt(cls, password: str) -> str:
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 UTF-8 bytes")
+        return password

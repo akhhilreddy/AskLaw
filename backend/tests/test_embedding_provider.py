@@ -97,6 +97,8 @@ class EmbeddingProviderTests(unittest.TestCase):
             QDRANT_URL="https://example.cloud.qdrant.io",
             QDRANT_API_KEY="test-qdrant-key",
             SEARXNG_URL="https://search.example.com/search",
+            RESEND_API_KEY="test-resend-key",
+            EMAIL_FROM="AskLAW <auth@example.com>",
             _env_file=None,
         )
 

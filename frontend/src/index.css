@@ -136,6 +136,41 @@ button:disabled,
   padding: 9px 11px;
 }
 
+.auth-inline-action {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 0 14px;
+  font-size: 12px;
+}
+
+.auth-help {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-secondary-action {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid #d6dce0;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--brand);
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.auth-secondary-action:hover:not(:disabled) {
+  border-color: #aebdca;
+  background: #f7f9fa;
+}
+
+.auth-secondary-action:disabled {
+  opacity: .55;
+}
+
 /* Workspace navigation */
 .sidebar {
   background: linear-gradient(180deg, #f4f5f4 0%, #eff1f1 100%);

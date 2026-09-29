@@ -20,6 +20,26 @@ export const signup = async (formData) => {
   }
 };
 
+export const verifyEmail = async (formData) => {
+  const response = await api.post("/auth/verify-email", formData);
+  return response.data;
+};
+
+export const resendVerification = async (email) => {
+  const response = await api.post("/auth/resend-verification", { email });
+  return response.data;
+};
+
+export const requestPasswordReset = async (email) => {
+  const response = await api.post("/auth/forgot-password", { email });
+  return response.data;
+};
+
+export const resetPassword = async (formData) => {
+  const response = await api.post("/auth/reset-password", formData);
+  return response.data;
+};
+
 export const logout = async () => {
   const response = await api.post("/auth/logout");
 
