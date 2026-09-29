@@ -6,7 +6,7 @@ services:
     ports:
       - "127.0.0.1:27017:27017"
     volumes:
-      - ${ASKLAW_MONGODB_DATA:-/Users/akhilreddy/mongodb-data}:/data/db
+      - ${ASKLAW_MONGODB_DATA:-asklaw-mongodb-data}:/data/db
     restart: unless-stopped
 
   qdrant:
@@ -16,7 +16,7 @@ services:
       - "127.0.0.1:6333:6333"
       - "127.0.0.1:6334:6334"
     volumes:
-      - ${ASKLAW_QDRANT_DATA:-/Users/akhilreddy/qdrant_storage}:/qdrant/storage
+      - ${ASKLAW_QDRANT_DATA:-asklaw-qdrant-data}:/qdrant/storage
     restart: unless-stopped
 
   redis:
@@ -31,13 +31,19 @@ services:
   searxng:
     image: searxng/searxng:latest
     container_name: asklaw-searxng
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-asklaw-local-development-only}
+      SEARXNG_LIMITER: "false"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ${ASKLAW_SEARXNG_SETTINGS:-/Users/akhilreddy/asklaw-searxng/settings.yml}:/etc/searxng/settings.yml:ro
+      - ${ASKLAW_SEARXNG_SETTINGS:-./deploy/searxng/settings.yml}:/etc/searxng/settings.yml:ro
+      - ./deploy/searxng/limiter.toml:/etc/searxng/limiter.toml:ro
       - asklaw-searxng-cache:/var/cache/searxng
     restart: unless-stopped
 
 volumes:
+  asklaw-mongodb-data:
+  asklaw-qdrant-data:
   asklaw-redis-data:
   asklaw-searxng-cache:

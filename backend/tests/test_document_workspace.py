@@ -467,18 +467,20 @@ class IndexingLifecycleTests(unittest.TestCase):
 
     def test_success_sets_processing_then_indexed_and_payload_scope(self):
         collection = FakeCollection(self.document)
-        store = Mock()
+        store = Mock(return_value=1)
 
         with patch.object(document_tasks, "document_collection", collection), patch.object(
             document_tasks, "create_collection"
-        ), patch.object(document_tasks, "store_chunk", store):
+        ), patch.object(document_tasks, "store_chunks", store):
             result = document_tasks.index_document.run(self.document_id, "user-1")
 
         statuses = [update["$set"]["status"] for _, update in collection.updates]
         self.assertEqual(statuses, ["processing", "indexed"])
         self.assertEqual(result["chunks_indexed"], 1)
-        self.assertEqual(store.call_args.kwargs["document_id"], self.document_id)
-        self.assertEqual(store.call_args.kwargs["user_id"], "user-1")
+        stored_chunks = store.call_args.args[0]
+        self.assertEqual(len(stored_chunks), 1)
+        self.assertEqual(stored_chunks[0]["document_id"], self.document_id)
+        self.assertEqual(stored_chunks[0]["user_id"], "user-1")
 
     def test_final_failure_sets_failed(self):
         collection = FakeCollection(self.document)
@@ -497,6 +499,25 @@ class IndexingLifecycleTests(unittest.TestCase):
         statuses = [update["$set"]["status"] for _, update in collection.updates]
         self.assertEqual(statuses, ["processing", "failed"])
 
+    def test_non_retryable_embedding_failure_skips_task_retry(self):
+        collection = FakeCollection(self.document)
+
+        with patch.object(
+            document_tasks, "document_collection", collection
+        ), patch.object(document_tasks, "create_collection"), patch.object(
+            document_tasks,
+            "store_chunks",
+            side_effect=vector_service.NonRetryableEmbeddingError("bad config"),
+        ), patch.object(document_tasks.index_document, "retry") as retry, patch.object(
+            document_tasks.logger, "exception"
+        ):
+            with self.assertRaises(vector_service.NonRetryableEmbeddingError):
+                document_tasks.index_document.run(self.document_id, "user-1")
+
+        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        self.assertEqual(statuses, ["processing", "failed"])
+        retry.assert_not_called()
+
     def test_duplicate_task_cannot_reindex_completed_document(self):
         completed = dict(self.document, status="indexed")
         collection = FakeCollection(completed)
@@ -506,7 +527,7 @@ class IndexingLifecycleTests(unittest.TestCase):
             document_tasks,
             "document_collection",
             collection,
-        ), patch.object(document_tasks, "store_chunk", store):
+        ), patch.object(document_tasks, "store_chunks", store):
             result = document_tasks.index_document.run(self.document_id, "user-1")
 
         self.assertFalse(result["success"])

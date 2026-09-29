@@ -1,0 +1,4 @@
+# OCI Always Free ARM instances have no CUDA device. The default Linux ARM64
+# PyPI wheel for this Torch release brings CUDA 13 libraries, so constrain the
+# container build to PyTorch's official CPU-only wheel for the same version.
+torch==2.13.0+cpu

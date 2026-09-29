@@ -1,0 +1,199 @@
+import asyncio
+import os
+import unittest
+from unittest.mock import patch
+
+import httpx
+from pydantic import ValidationError
+
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("ALGORITHM", "HS256")
+os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "15")
+os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "7")
+os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
+
+
+from app.core.config import Settings
+from app.mcp import server as mcp_server
+from app.services.query_router import QueryRoute, route_query
+
+
+def make_settings(**overrides):
+    values = {
+        "APP_ENV": "development",
+        "SECRET_KEY": "test-secret-key",
+        "ALGORITHM": "HS256",
+        "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
+        "REFRESH_TOKEN_EXPIRE_DAYS": 7,
+        "EMBEDDING_PROVIDER": "local",
+        "QDRANT_URL": "http://localhost:6333",
+        "CORS_ORIGINS": "http://localhost:5173",
+        "COOKIE_SECURE": False,
+        "SEARXNG_URL": "http://127.0.0.1:8080/search",
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.payload
+
+
+class FakeAsyncClient:
+    def __init__(self, response=None, error=None):
+        self.response = response
+        self.error = error
+        self.requests = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    async def get(self, url, params):
+        self.requests.append((url, params))
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+class SearxngConfigurationTests(unittest.TestCase):
+    def test_local_searxng_search_url_is_supported(self):
+        settings = make_settings()
+        self.assertEqual(
+            settings.SEARXNG_URL,
+            "http://127.0.0.1:8080/search",
+        )
+
+    def test_production_searxng_search_url_is_supported(self):
+        settings = make_settings(
+            APP_ENV="production",
+            SECRET_KEY="x" * 32,
+            COOKIE_SECURE=True,
+            CORS_ORIGINS="https://asklaw.example",
+            SEARXNG_URL=(
+                "https://asklaw-searxng.onrender.com/search"
+            ),
+        )
+        self.assertEqual(
+            settings.SEARXNG_URL,
+            "https://asklaw-searxng.onrender.com/search",
+        )
+
+    def test_production_rejects_loopback_searxng(self):
+        with self.assertRaisesRegex(
+            ValidationError,
+            "cannot use a loopback address in production",
+        ):
+            make_settings(
+                APP_ENV="production",
+                SECRET_KEY="x" * 32,
+                COOKIE_SECURE=True,
+                CORS_ORIGINS="https://asklaw.example",
+            )
+
+    def test_searxng_url_requires_exact_search_endpoint(self):
+        with self.assertRaisesRegex(
+            ValidationError,
+            "ending exactly in /search",
+        ):
+            make_settings(
+                SEARXNG_URL="https://asklaw-searxng.onrender.com",
+            )
+
+
+class SearxngMcpTests(unittest.TestCase):
+    def test_search_uses_configured_endpoint_and_parses_json(self):
+        client = FakeAsyncClient(
+            response=FakeResponse(
+                {
+                    "results": [
+                        {
+                            "title": "Supreme Court of India",
+                            "url": "https://www.sci.gov.in/",
+                            "content": "Official court website",
+                            "engine": "google",
+                        },
+                        {
+                            "title": "Second result",
+                            "url": "https://example.test/second",
+                            "content": "Second result content",
+                            "engine": "bing",
+                        },
+                    ]
+                }
+            )
+        )
+
+        with patch.object(
+            mcp_server.settings,
+            "SEARXNG_URL",
+            "https://asklaw-searxng.onrender.com/search",
+        ), patch.object(
+            mcp_server.httpx,
+            "AsyncClient",
+            return_value=client,
+        ):
+            result = asyncio.run(
+                mcp_server.search_web("Article 32", limit=1)
+            )
+
+        self.assertEqual(
+            client.requests,
+            [
+                (
+                    "https://asklaw-searxng.onrender.com/search",
+                    {"q": "Article 32", "format": "json"},
+                )
+            ],
+        )
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["engine"], "google")
+
+    def test_search_failure_returns_safe_empty_result(self):
+        client = FakeAsyncClient(
+            error=httpx.ConnectError("service unavailable"),
+        )
+
+        with patch.object(
+            mcp_server.httpx,
+            "AsyncClient",
+            return_value=client,
+        ):
+            result = asyncio.run(
+                mcp_server.search_web("Article 32")
+            )
+
+        self.assertEqual(result["results"], [])
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(
+            result["error"],
+            "Web search is temporarily unavailable",
+        )
+
+    def test_existing_research_routes_are_unchanged(self):
+        self.assertEqual(
+            route_query("What does Article 32 provide?"),
+            QueryRoute.RAG,
+        )
+        self.assertEqual(
+            route_query("Latest Supreme Court privacy judgment"),
+            QueryRoute.WEB,
+        )
+        self.assertEqual(
+            route_query("Latest development about Article 32"),
+            QueryRoute.HYBRID,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

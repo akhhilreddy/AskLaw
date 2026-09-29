@@ -327,7 +327,7 @@ def stream_response(
 
     1. Extract user question.
     2. Route query.
-    3. Retrieve RAG / WEB / HYBRID context.
+    3. Retrieve RAG / WEB / HYBRID context when research is needed.
     4. Build structured evidence bundle.
     5. Build grounded prompt.
     6. Call Groq.
@@ -425,6 +425,8 @@ def stream_response(
         [],
     )
 
+    is_conversation = route == "conversation"
+
     logger.info(
         "Research retrieval completed route=%s rag_results=%s web_results=%s",
         route,
@@ -436,65 +438,73 @@ def stream_response(
     # BUILD STRUCTURED EVIDENCE
     # =====================================================
 
-    try:
-
-        evidence_bundle = build_evidence_bundle(
-            rag_results=rag_results,
-            web_results=web_results,
-            query=user_message,
-        )
-
-    except Exception as exc:
-        logger.exception("Evidence processing failed")
-
-        error_event = {
-            "type": "error",
-            "content": (
-                "Evidence processing failed. Please try again."
-            ),
+    if is_conversation:
+        evidence_bundle = {
+            "evidence": [],
         }
+    else:
+        try:
 
-        yield (
-            json.dumps(
-                error_event
+            evidence_bundle = build_evidence_bundle(
+                rag_results=rag_results,
+                web_results=web_results,
+                query=user_message,
             )
-            + "\n"
-        )
 
-        return
+        except Exception as exc:
+            logger.exception("Evidence processing failed")
+
+            error_event = {
+                "type": "error",
+                "content": (
+                    "Evidence processing failed. Please try again."
+                ),
+            }
+
+            yield (
+                json.dumps(
+                    error_event
+                )
+                + "\n"
+            )
+
+            return
 
     # =====================================================
     # BUILD GROUNDED LEGAL PROMPT
     # =====================================================
 
-    try:
+    if is_conversation:
+        legal_prompt = None
+    else:
+        try:
 
-        legal_prompt = build_legal_prompt(
-            query=user_message,
-            route=route,
-            rag_results=rag_results,
-            web_results=web_results,
-            evidence_bundle=evidence_bundle,
-        )
-
-    except Exception as exc:
-        logger.exception("Research prompt construction failed")
-
-        error_event = {
-            "type": "error",
-            "content": (
-                "The research prompt could not be prepared. Please try again."
-            ),
-        }
-
-        yield (
-            json.dumps(
-                error_event
+            legal_prompt = build_legal_prompt(
+                query=user_message,
+                route=route,
+                rag_results=rag_results,
+                web_results=web_results,
+                evidence_bundle=evidence_bundle,
             )
-            + "\n"
-        )
 
-        return
+        except Exception as exc:
+            logger.exception("Research prompt construction failed")
+
+            error_event = {
+                "type": "error",
+                "content": (
+                    "The research prompt could not be prepared. Please try again."
+                ),
+            }
+
+            yield (
+                json.dumps(
+                    error_event
+                )
+                + "\n"
+            )
+
+            return
 
     # =====================================================
     # BUILD BACKEND SOURCE METADATA
@@ -648,20 +658,23 @@ def stream_response(
     # CLAIM VERIFICATION
     # =====================================================
 
-    verification = {
-        "claims": [],
-        "summary": {
-            "total_claims": 0,
-            "supported_claims": 0,
-            "partial_claims": 0,
-            "unsupported_claims": 0,
-            "legal_claims": 0,
-        },
-    }
+    verification = None
+    grounding_score = None
 
-    grounding_score = 0.0
+    if not is_conversation:
+        verification = {
+            "claims": [],
+            "summary": {
+                "total_claims": 0,
+                "supported_claims": 0,
+                "partial_claims": 0,
+                "unsupported_claims": 0,
+                "legal_claims": 0,
+            },
+        }
+        grounding_score = 0.0
 
-    if generated_answer:
+    if generated_answer and verification is not None:
 
         try:
 
@@ -718,25 +731,26 @@ def stream_response(
     # SEND CLAIM VERIFICATION
     # =====================================================
 
-    verification_event = {
-        "type": "verification",
-        "grounding_score": grounding_score,
-        "summary": verification.get(
-            "summary",
-            {},
-        ),
-        "claims": verification.get(
-            "claims",
-            [],
-        ),
-    }
+    if verification is not None:
+        verification_event = {
+            "type": "verification",
+            "grounding_score": grounding_score,
+            "summary": verification.get(
+                "summary",
+                {},
+            ),
+            "claims": verification.get(
+                "claims",
+                [],
+            ),
+        }
 
-    yield (
-        json.dumps(
-            verification_event
+        yield (
+            json.dumps(
+                verification_event
+            )
+            + "\n"
         )
-        + "\n"
-    )
 
     # =====================================================
     # SEND RETRIEVAL ROUTE
@@ -758,6 +772,10 @@ def stream_response(
         "AI response completed route=%s sources=%s claims=%s grounding_score=%s",
         route,
         len(sources),
-        verification.get("summary", {}).get("total_claims", 0),
+        (
+            verification.get("summary", {}).get("total_claims", 0)
+            if verification is not None
+            else 0
+        ),
         grounding_score,
     )

@@ -3,6 +3,7 @@ AskLaw Query Router
 
 Determines whether a user query should use:
 
+    conversation -> no research retrieval
     rag     -> uploaded/local documents
     web     -> MCP/SearXNG web search
     hybrid  -> both RAG and web search
@@ -20,9 +21,25 @@ from enum import Enum
 # ============================================================
 
 class QueryRoute(str, Enum):
+    CONVERSATION = "conversation"
     RAG = "rag"
     WEB = "web"
     HYBRID = "hybrid"
+
+
+# ============================================================
+# CASUAL CONVERSATION INDICATORS
+# ============================================================
+
+# Keep this intentionally narrow. These patterns match complete social
+# utterances, not messages that merely begin with a greeting before asking
+# a research question.
+CONVERSATIONAL_PATTERNS = [
+    r"^\s*(?:hi|hello|hey|hiya|howdy)(?:\s+(?:there|asklaw))?[!,.?]*\s*$",
+    r"^\s*good\s+(?:morning|afternoon|evening)(?:\s+(?:there|asklaw))?[!,.?]*\s*$",
+    r"^\s*(?:thanks|thank\s+you)(?:\s+(?:so|very)\s+much)?[!,.?]*\s*$",
+    r"^\s*(?:bye|goodbye|see\s+you)[!,.?]*\s*$",
+]
 
 
 # ============================================================
@@ -172,6 +189,10 @@ def _has_general_legal_intent(query: str) -> bool:
     return _matches_any(query, GENERAL_LEGAL_PATTERNS)
 
 
+def _has_conversational_intent(query: str) -> bool:
+    return _matches_any(query, CONVERSATIONAL_PATTERNS)
+
+
 # ============================================================
 # ROUTER
 # ============================================================
@@ -185,6 +206,12 @@ def route_query(
     # Preserve existing behavior for empty input.
     if not query:
         return QueryRoute.RAG
+
+    # Complete, clearly social utterances do not need legal research. The
+    # anchored patterns ensure messages such as "Hello, what does Article 32
+    # provide?" continue through the normal legal router.
+    if _has_conversational_intent(query):
+        return QueryRoute.CONVERSATION
 
     has_rag_signal = _has_document_intent(query)
     has_web_signal = _has_web_intent(query)
@@ -243,6 +270,7 @@ def explain_route(
     return {
         "query": query,
         "route": route_query(query).value,
+        "conversational_signal": _has_conversational_intent(query),
         "rag_signal": _has_document_intent(query),
         "web_signal": _has_web_intent(query),
         "general_legal_signal": _has_general_legal_intent(query),

@@ -1,4 +1,5 @@
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,8 +22,11 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DATABASE: str = "asklaw"
     QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_NAME: str = "asklaw_documents"
+    EMBEDDING_PROVIDER: Literal["local", "gemini"] = "local"
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    GEMINI_EMBEDDING_BATCH_SIZE: int = Field(default=32, ge=1, le=100)
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CORS_ORIGINS: str = "http://localhost:5173"
@@ -47,9 +51,35 @@ class Settings(BaseSettings):
             if origin.strip()
         ]
 
+    @property
+    def qdrant_api_key(self) -> str | None:
+        api_key = self.QDRANT_API_KEY.strip()
+        return api_key or None
+
     @model_validator(mode="after")
     def validate_security_settings(self):
         origins = self.cors_origins
+        searxng_url = urlparse(self.SEARXNG_URL)
+
+        if (
+            searxng_url.scheme not in {"http", "https"}
+            or not searxng_url.hostname
+            or searxng_url.path != "/search"
+            or searxng_url.params
+            or searxng_url.query
+            or searxng_url.fragment
+        ):
+            raise ValueError(
+                "SEARXNG_URL must be an HTTP(S) URL ending exactly in /search"
+            )
+
+        if (
+            self.EMBEDDING_PROVIDER == "gemini"
+            and not self.GEMINI_API_KEY.strip()
+        ):
+            raise ValueError(
+                "GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini"
+            )
 
         if not origins or "*" in origins:
             raise ValueError(
@@ -57,6 +87,31 @@ class Settings(BaseSettings):
             )
 
         if self.APP_ENV.lower() in {"prod", "production"}:
+            qdrant_hostname = (
+                urlparse(self.QDRANT_URL).hostname or ""
+            ).lower()
+            searxng_hostname = (
+                searxng_url.hostname or ""
+            ).lower()
+
+            if searxng_hostname in {
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "::1",
+            }:
+                raise ValueError(
+                    "SEARXNG_URL cannot use a loopback address in production"
+                )
+
+            if (
+                qdrant_hostname.endswith(".cloud.qdrant.io")
+                and self.qdrant_api_key is None
+            ):
+                raise ValueError(
+                    "QDRANT_API_KEY is required for Qdrant Cloud in production"
+                )
+
             if not self.COOKIE_SECURE:
                 raise ValueError("COOKIE_SECURE must be enabled in production")
 

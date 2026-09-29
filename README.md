@@ -220,13 +220,12 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m pip install celery
 cp .env.example .env
 ```
 
 Edit `backend/.env` before startup. At minimum, replace `SECRET_KEY` with a long random value and set `GROQ_API_KEY` for live answers. Do not commit this file.
 
-Celery is required by the application and by `start.sh`, but it is not currently listed in `backend/requirements.txt`; the explicit install above is therefore necessary on a new environment.
+Celery and its Redis transport are included in `backend/requirements.txt`.
 
 ### 3. Configure the frontend
 
@@ -241,15 +240,18 @@ The example frontend URL already targets the default local FastAPI address.
 
 ### 4. Configure portable Compose storage
 
-Docker Compose reads a separate `.env` file from the repository root. The current Compose file contains machine-specific fallback bind-mount paths, so define portable absolute paths on every other machine:
+The local Compose stack uses named MongoDB, Qdrant, Redis, and SearXNG cache
+volumes by default. To keep using existing bind-mounted MongoDB or Qdrant data,
+define their absolute paths in the root Compose `.env`:
 
 ```dotenv
 ASKLAW_MONGODB_DATA=/absolute/path/to/asklaw-data/mongodb
 ASKLAW_QDRANT_DATA=/absolute/path/to/asklaw-data/qdrant
-ASKLAW_SEARXNG_SETTINGS=/absolute/path/to/searxng/settings.yml
 ```
 
-Create the two data directories and ensure the SearXNG settings file exists before starting. The repository does not currently include that SearXNG settings file.
+The secret-free SearXNG configuration is included at
+`deploy/searxng/settings.yml`. `ASKLAW_SEARXNG_SETTINGS` can still override it
+for a custom local configuration.
 
 ### 5. Start AskLaw
 
@@ -273,7 +275,8 @@ Press `Ctrl+C` in the startup terminal, or run the following from another termin
 ./stop.sh
 ```
 
-Both paths run `docker compose down`. Containers are removed, but the bind-mounted MongoDB/Qdrant data and named Redis/SearXNG cache volumes are preserved.
+Both paths run `docker compose down`. Containers are removed, but named volumes
+and any configured bind-mounted data are preserved.
 
 ## Environment variables
 
@@ -289,13 +292,15 @@ Keep backend runtime configuration in `backend/.env`, using `backend/.env.exampl
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime | Yes | `30` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh-token and cookie lifetime | Yes | `7` |
 | `ALLOW_LEGACY_UNTYPED_REFRESH_TOKENS` | Temporary compatibility for old refresh cookies | No | `true` during migration; then `false` |
-| `GEMINI_API_KEY` | Reserved setting; unused by the current answer pipeline | No | leave empty |
+| `GEMINI_API_KEY` | Gemini embedding credential | Required when `EMBEDDING_PROVIDER=gemini` | leave empty for local embeddings |
 | `GROQ_API_KEY` | Groq credential for generated answers | Required for chat answers | `your-groq-key` |
 | `MONGODB_URL` | MongoDB connection URI | No; local default exists | `mongodb://localhost:27017` |
 | `MONGODB_DATABASE` | MongoDB database name | No; local default exists | `asklaw` |
 | `QDRANT_URL` | Qdrant HTTP endpoint | No; local default exists | `http://localhost:6333` |
 | `QDRANT_COLLECTION_NAME` | Document-vector collection | No; local default exists | `asklaw_documents` |
+| `EMBEDDING_PROVIDER` | Document/query embedding implementation | No; defaults to local | `local` or `gemini` |
 | `EMBEDDING_MODEL` | Sentence Transformers model identifier | No; local default exists | `sentence-transformers/all-MiniLM-L6-v2` |
+| `GEMINI_EMBEDDING_BATCH_SIZE` | Maximum texts in one Gemini embedding request | No | `32` |
 | `CELERY_BROKER_URL` | Celery broker | No; local default exists | `redis://localhost:6379/0` |
 | `CELERY_RESULT_BACKEND` | Celery result backend | No; local default exists | `redis://localhost:6379/1` |
 | `CORS_ORIGINS` | Comma-separated trusted browser origins; wildcard is rejected | No; local default exists | `http://localhost:5173` |
@@ -315,7 +320,10 @@ The frontend reads `frontend/.env`:
 | --- | --- | --- | --- |
 | `VITE_API_BASE_URL` | FastAPI base URL used by Axios and streaming `fetch` | No; local fallback exists | `http://localhost:8000` |
 
-The root Compose `.env` uses `ASKLAW_MONGODB_DATA`, `ASKLAW_QDRANT_DATA`, and `ASKLAW_SEARXNG_SETTINGS` as described in [Local setup](#4-configure-portable-compose-storage). These values are Docker bind-mount paths, not backend application settings.
+The optional root Compose `.env` can override `ASKLAW_MONGODB_DATA`,
+`ASKLAW_QDRANT_DATA`, and `ASKLAW_SEARXNG_SETTINGS` as described in
+[Local setup](#4-configure-portable-compose-storage). These values are Docker
+mount sources, not backend application settings.
 
 ## API overview
 
@@ -484,10 +492,12 @@ These controls describe the current local implementation. They do not make the r
 - PDF text extraction and chunking run synchronously in the upload request.
 - Scanned/image-only PDFs are rejected because OCR is not implemented.
 - Web research ranks SearXNG result metadata and snippets; it does not fetch and parse every result page.
-- Docker Compose is configured for local development and has no health checks or production network isolation.
-- The repository does not include a deployment configuration or hosted environment.
-- Celery is not yet declared in `backend/requirements.txt`, and the required SearXNG settings file is not included.
-- Python and Node runtime versions are not pinned at the repository level.
+- The local `docker-compose.yml` remains development-oriented; the separate
+  production foundation has health checks and private service networking.
+- The repository is not deployed and does not contain production secrets, DNS,
+  cloud firewall configuration, backups, or monitoring credentials.
+- Python and Node versions are pinned for the production images, not for direct
+  host-based development.
 
 ## Development notes
 
@@ -495,7 +505,8 @@ These controls describe the current local implementation. They do not make the r
 - Local logs are written to `/tmp/asklaw-fastapi.log`, `/tmp/asklaw-celery.log`, `/tmp/asklaw-mcp.log`, and `/tmp/asklaw-frontend.log`.
 - The Celery worker uses the `solo` pool for the local workflow.
 - `start.sh` starts services in sequence but does not wait for Docker service health checks before starting application processes.
-- MongoDB and Qdrant use bind-mounted persistent storage; Redis and SearXNG cache use named Docker volumes.
+- MongoDB, Qdrant, Redis, and SearXNG cache use named Docker volumes by default;
+  existing MongoDB/Qdrant bind mounts remain available through overrides.
 - `stop.sh` validates recorded process commands before signalling them, removes the PID file, and runs `docker compose down`.
 - MongoDB indexes are created during the FastAPI lifespan for unique email and user-scoped document/conversation sorting.
 - The Documents page polls `GET /documents` every three seconds while any document is `uploaded` or `processing`.
@@ -503,6 +514,18 @@ These controls describe the current local implementation. They do not make the r
 
 ## Deployment considerations
 
-No deployment target or public URL is included in this repository. A deployment design should separate the frontend, API, worker, and stateful services; use managed secrets and TLS; keep datastores private; pin and scan images; add rate limits and security headers; configure production CORS and cookies; and provide health/readiness checks, durable logging, monitoring, backups, and recovery procedures.
+[`compose.production.yml`](compose.production.yml) and
+[`deploy/README.md`](deploy/README.md) provide the ARM64 production-container
+foundation. They separate the frontend/HTTPS proxy, API, worker, MCP, and
+stateful services; keep internal services unpublished; use health checks,
+rotating logs, pinned runtime tags, and persistent volumes; and pre-cache the
+embedding model for local-provider builds. The default production example uses
+Gemini embeddings and a separate 3072-dimensional Qdrant collection, avoiding
+PyTorch and local model weights in that image.
+
+This is not a public deployment. OCI provisioning, DNS, real secrets,
+production origins, firewall rules, rate limiting, image scanning, monitoring,
+backups, and restore procedures still need to be completed and validated before
+launch.
 
 The synchronous PDF extraction path should also be assessed against expected upload volume and moved behind an appropriately protected worker boundary if production load requires it.

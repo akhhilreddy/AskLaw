@@ -1,0 +1,43 @@
+{
+	admin off
+}
+
+{$APP_SITE_ADDRESS:http://localhost} {
+	log
+
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' {$API_CONNECT_ORIGIN:http://api.localhost}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	encode zstd gzip
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}
+
+{$API_SITE_ADDRESS:http://api.localhost} {
+	log
+
+	header {
+		Referrer-Policy "no-referrer"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	reverse_proxy api:8000 {
+		# AskLaw streams newline-delimited JSON. Forward chunks immediately.
+		flush_interval -1
+	}
+}
+
+# Private listener used only by the container health check.
+:8080 {
+	respond /healthz "ok" 200
+}

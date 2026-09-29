@@ -1,0 +1,43 @@
+use_default_settings:
+  engines:
+    remove:
+      - ahmia
+      - torch
+
+general:
+  debug: false
+  instance_name: AskLaw Search
+  enable_metrics: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+
+server:
+  bind_address: "0.0.0.0"
+  port: 10000
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+engines:
+  - name: brave
+    disabled: true
+
+  - name: duckduckgo
+    disabled: true
+
+  - name: google cse
+    disabled: true
+
+  - name: bing
+    disabled: false
+
+  - name: google
+    disabled: false
+
+# Runtime values override the matching server settings through
+# SEARXNG_SECRET, SEARXNG_BASE_URL, SEARXNG_PORT, and
+# SEARXNG_BIND_ADDRESS. No production secret belongs in this file.
