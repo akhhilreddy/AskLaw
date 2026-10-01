@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import httpx
@@ -8,10 +9,51 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+SEARXNG_REQUEST_TIMEOUT_SECONDS = 30.0
+SEARXNG_MAX_ATTEMPTS = 3
+SEARXNG_RETRY_DELAYS_SECONDS = (5.0, 15.0)
+SEARXNG_TRANSIENT_STATUS_CODES = {502, 503, 504}
+
 server = MCPServer(
     name="AskLaw MCP",
     version="1.0.0",
 )
+
+
+def _is_transient_search_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.TransportError):
+        return True
+
+    return (
+        isinstance(exc, httpx.HTTPStatusError)
+        and exc.response.status_code in SEARXNG_TRANSIENT_STATUS_CODES
+    )
+
+
+async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> dict:
+    for attempt in range(SEARXNG_MAX_ATTEMPTS):
+        try:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            can_retry = (
+                _is_transient_search_error(exc)
+                and attempt < SEARXNG_MAX_ATTEMPTS - 1
+            )
+            if not can_retry:
+                raise
+
+            delay = SEARXNG_RETRY_DELAYS_SECONDS[attempt]
+            logger.warning(
+                "SearXNG request temporarily unavailable; retrying "
+                "attempt=%s/%s delay_seconds=%s error=%s",
+                attempt + 1,
+                SEARXNG_MAX_ATTEMPTS,
+                delay,
+                type(exc).__name__,
+            )
+            await asyncio.sleep(delay)
 
 
 @server.tool()
@@ -35,16 +77,10 @@ async def search_web(query: str, limit: int = 5) -> dict:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-
-            response = await client.get(
-                url,
-                params=params,
-            )
-
-            response.raise_for_status()
-
-            data = response.json()
+        async with httpx.AsyncClient(
+            timeout=SEARXNG_REQUEST_TIMEOUT_SECONDS,
+        ) as client:
+            data = await _request_search(client, url, params)
 
         results = []
 
@@ -96,8 +132,6 @@ if __name__ == "__main__":
     print("Starting MCP server...")
     print(f"URL: http://{settings.MCP_HOST}:{settings.MCP_PORT}/mcp")
     print("=" * 60)
-
-    import asyncio
 
     asyncio.run(
         server.run_streamable_http_async(
