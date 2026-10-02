@@ -568,13 +568,16 @@ class AuthAndChatTests(unittest.TestCase):
         empty_users = FakeCollection(None)
         with patch.object(auth, "user_collection", empty_users), patch.object(
             auth, "hash_password", return_value="hashed"
+        ), patch.object(
+            auth, "issue_code", return_value=True
         ):
             signup_result = auth.signup(
                 SignUpRequest(name="Person", email="new@example.com", password="secret123")
             )
-            self.assertEqual(signup_result["message"], "User registered successfully")
+            self.assertEqual(signup_result["message"], "Verification code sent")
             self.assertNotIn("password", empty_users.inserted[0])
             self.assertEqual(empty_users.inserted[0]["password_hash"], "hashed")
+            self.assertFalse(empty_users.inserted[0]["email_verified"])
 
         with patch.object(auth, "user_collection", users), patch.object(
             auth.jwt,

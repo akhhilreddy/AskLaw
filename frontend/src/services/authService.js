@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { API_BASE_URL } from "./api";
 import { normalizeSignupError } from "./authError";
 
 export const login = async (formData) => {
@@ -18,6 +18,40 @@ export const signup = async (formData) => {
   } catch (error) {
     throw new Error(normalizeSignupError(error), { cause: error });
   }
+};
+
+export const verifyEmail = async (formData) => {
+  const response = await api.post("/auth/verify-email", formData);
+  return response.data;
+};
+
+export const resendVerification = async (email) => {
+  const response = await api.post("/auth/resend-verification", { email });
+  return response.data;
+};
+
+export const requestPasswordReset = async (email) => {
+  const response = await api.post("/auth/forgot-password", { email });
+  return response.data;
+};
+
+export const resetPassword = async (formData) => {
+  const response = await api.post("/auth/reset-password", formData);
+  return response.data;
+};
+
+export const getAuthProviders = async () => {
+  const response = await api.get("/auth/providers");
+  return response.data;
+};
+
+export const startGoogleSignIn = () => {
+  window.location.assign(`${API_BASE_URL}/auth/google/start`);
+};
+
+export const exchangeGoogleCode = async (code) => {
+  const response = await api.post("/auth/google/exchange", { code });
+  return response.data;
 };
 
 export const logout = async () => {

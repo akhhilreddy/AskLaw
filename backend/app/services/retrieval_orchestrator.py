@@ -38,6 +38,8 @@ import re
 from datetime import date
 from typing import Any
 
+from qdrant_client.http.exceptions import UnexpectedResponse
+
 logger = logging.getLogger(__name__)
 
 from app.services.query_router import (
@@ -741,6 +743,17 @@ def _deduplicate_web_results(
 # RAG RETRIEVAL
 # ============================================================
 
+def _is_missing_collection_response(exc: UnexpectedResponse) -> bool:
+    if exc.status_code != 404:
+        return False
+
+    content = exc.content.decode("utf-8", errors="ignore").lower()
+    return "collection" in content and (
+        "doesn't exist" in content
+        or "does not exist" in content
+        or "not found" in content
+    )
+
 def retrieve_rag(
     query: str,
     user_id: str,
@@ -754,12 +767,21 @@ def retrieve_rag(
     and is additionally limited to that document.
     """
 
-    results = retrieve_relevant_chunks(
-        query=query,
-        user_id=user_id,
-        document_id=document_id,
-        limit=limit,
-    )
+    try:
+        results = retrieve_relevant_chunks(
+            query=query,
+            user_id=user_id,
+            document_id=document_id,
+            limit=limit,
+        )
+    except UnexpectedResponse as exc:
+        if not _is_missing_collection_response(exc):
+            raise
+
+        logger.info(
+            "Document collection is not available; treating RAG results as empty"
+        )
+        return []
 
     return _normalize_rag_results(
         results
@@ -911,10 +933,22 @@ async def retrieve_for_query(
             rag_limit,
         )
 
+        if rag_results or document_id is not None:
+            return {
+                "route": "rag",
+                "rag_results": rag_results,
+                "web_results": [],
+            }
+
+        web_results = await retrieve_web(
+            query,
+            web_limit,
+        )
+
         return {
-            "route": "rag",
-            "rag_results": rag_results,
-            "web_results": [],
+            "route": "web",
+            "rag_results": [],
+            "web_results": web_results,
         }
 
     # ========================================================

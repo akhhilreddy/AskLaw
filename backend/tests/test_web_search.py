@@ -31,26 +31,36 @@ def make_settings(**overrides):
         "CORS_ORIGINS": "http://localhost:5173",
         "COOKIE_SECURE": False,
         "SEARXNG_URL": "http://127.0.0.1:8080/search",
+        "FRONTEND_URL": "http://localhost:5173",
+        "RESEND_API_KEY": "test-resend-key",
+        "EMAIL_FROM": "AskLAW <auth@example.com>",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200):
         self.payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
-        return None
+        if self.status_code < 400:
+            return None
+
+        request = httpx.Request("GET", "https://search.example.com/search")
+        response = httpx.Response(self.status_code, request=request)
+        response.raise_for_status()
 
     def json(self):
         return self.payload
 
 
 class FakeAsyncClient:
-    def __init__(self, response=None, error=None):
+    def __init__(self, response=None, error=None, responses=None):
         self.response = response
         self.error = error
+        self.responses = list(responses or [])
         self.requests = []
 
     async def __aenter__(self):
@@ -63,6 +73,8 @@ class FakeAsyncClient:
         self.requests.append((url, params))
         if self.error is not None:
             raise self.error
+        if self.responses:
+            return self.responses.pop(0)
         return self.response
 
 
@@ -83,6 +95,7 @@ class SearxngConfigurationTests(unittest.TestCase):
             SEARXNG_URL=(
                 "https://asklaw-searxng.onrender.com/search"
             ),
+            FRONTEND_URL="https://asklaw.example",
         )
         self.assertEqual(
             settings.SEARXNG_URL,
@@ -168,17 +181,59 @@ class SearxngMcpTests(unittest.TestCase):
             mcp_server.httpx,
             "AsyncClient",
             return_value=client,
-        ):
+        ), patch.object(
+            mcp_server.asyncio,
+            "sleep",
+        ) as sleep:
             result = asyncio.run(
                 mcp_server.search_web("Article 32")
             )
 
+        self.assertEqual(len(client.requests), 3)
+        self.assertEqual(
+            [call.args[0] for call in sleep.call_args_list],
+            [5.0, 15.0],
+        )
         self.assertEqual(result["results"], [])
         self.assertEqual(result["count"], 0)
         self.assertEqual(
             result["error"],
             "Web search is temporarily unavailable",
         )
+
+    def test_transient_bad_gateway_is_retried_and_recovers(self):
+        client = FakeAsyncClient(
+            responses=[
+                FakeResponse({}, status_code=502),
+                FakeResponse(
+                    {
+                        "results": [
+                            {
+                                "title": "Supreme Court of India",
+                                "url": "https://www.sci.gov.in/",
+                                "content": "Official court website",
+                                "engine": "google",
+                            }
+                        ]
+                    }
+                ),
+            ]
+        )
+
+        with patch.object(
+            mcp_server.httpx,
+            "AsyncClient",
+            return_value=client,
+        ):
+            with patch.object(mcp_server.asyncio, "sleep") as sleep:
+                result = asyncio.run(
+                    mcp_server.search_web("Article 32")
+                )
+
+        self.assertEqual(len(client.requests), 2)
+        sleep.assert_awaited_once_with(5.0)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["engine"], "google")
 
     def test_existing_research_routes_are_unchanged(self):
         self.assertEqual(

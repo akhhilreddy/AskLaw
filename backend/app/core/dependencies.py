@@ -46,6 +46,16 @@ def get_current_user(
         if user is None:
             raise credentials_exception
 
+        if user.get("email_verified") is False:
+            raise credentials_exception
+
+        user_auth_version = user.get("auth_version")
+        if (
+            user_auth_version is not None
+            and payload.get("auth_version") != user_auth_version
+        ):
+            raise credentials_exception
+
         return user
 
     except JWTError:

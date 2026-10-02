@@ -10,6 +10,12 @@ let redirectingToLogin = false;
 const unauthenticatedPaths = new Set([
   "/auth/login",
   "/auth/signup",
+  "/auth/verify-email",
+  "/auth/resend-verification",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  "/auth/providers",
+  "/auth/google/exchange",
   "/auth/refresh",
   "/auth/token",
 ]);
