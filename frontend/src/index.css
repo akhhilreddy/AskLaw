@@ -194,7 +194,8 @@ button:disabled,
   background: var(--line);
 }
 
-.google-auth-button {
+.google-auth-button,
+.passkey-auth-button {
   width: 100%;
   height: 50px;
   display: inline-flex;
@@ -209,9 +210,239 @@ button:disabled,
   transition: border-color .18s ease, background-color .18s ease;
 }
 
-.google-auth-button:hover {
+.google-auth-button:hover,
+.passkey-auth-button:hover:not(:disabled) {
   border-color: #aebdca;
   background: #f8fafb;
+}
+
+.passkey-auth-button:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+.passkey-auth-error {
+  text-align: center;
+}
+
+/* Account security */
+.security-page {
+  width: min(100%, 900px);
+  margin: 0 auto;
+  padding: 56px 32px 70px;
+  overflow-y: auto;
+}
+
+.security-page > h1 {
+  margin: 10px 0;
+  color: #1d2e42;
+  font: 400 48px var(--serif);
+}
+
+.security-page > p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.security-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 28px 0 36px;
+}
+
+.security-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid #dce2e6;
+  border-radius: 8px;
+  background: #f8fafb;
+  color: #536474;
+  font-size: 12px;
+}
+
+.security-notice {
+  margin-bottom: 18px;
+  padding: 13px 15px;
+  border: 1px solid #e1d2a9;
+  border-radius: 9px;
+  background: #fffaf0;
+  color: #745f30;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.security-panel {
+  margin-top: 16px;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+}
+
+.security-panel h2 {
+  margin: 0 0 6px;
+  color: #24364a;
+  font: 400 27px var(--serif);
+}
+
+.security-panel > div > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.passkey-register-form {
+  margin-top: 22px;
+}
+
+.passkey-register-form label {
+  display: block;
+  margin-bottom: 8px;
+  color: #354454;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.passkey-register-form > div {
+  display: flex;
+  gap: 10px;
+}
+
+.passkey-register-form input {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid #d6dce0;
+  border-radius: 9px;
+  outline: none;
+}
+
+.passkey-register-form input:focus {
+  border-color: #8295aa;
+  box-shadow: 0 0 0 3px #e9eef3;
+}
+
+.passkey-register-form .primary-button {
+  min-width: 138px;
+}
+
+.passkey-empty {
+  margin: 22px 0 0;
+  padding: 20px;
+  border-radius: 9px;
+  background: #f7f9fa;
+  color: #74808b;
+  font-size: 13px;
+  text-align: center;
+}
+
+.passkey-list {
+  margin-top: 18px;
+}
+
+.passkey-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 0;
+  border-top: 1px solid var(--line);
+}
+
+.passkey-icon {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 10px;
+  background: #edf1f4;
+  color: var(--brand);
+}
+
+.passkey-details {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+
+.passkey-details strong {
+  overflow-wrap: anywhere;
+  color: #2b3c4e;
+  font-size: 13px;
+}
+
+.passkey-details span,
+.passkey-details small {
+  color: #7a8792;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.passkey-details small {
+  color: #55735f;
+  font-weight: 650;
+}
+
+.passkey-remove,
+.passkey-confirm-actions button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #687582;
+  padding: 9px 10px;
+  font-size: 12px;
+}
+
+.passkey-remove:hover,
+.passkey-confirm-actions button:hover:not(:disabled) {
+  background: #eef1f3;
+  color: var(--brand);
+}
+
+.passkey-confirm-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.passkey-confirm-actions .danger-action {
+  background: #fff1ef;
+  color: #a43d33;
+}
+
+.security-feedback {
+  min-height: 44px;
+}
+
+@media(max-width:700px) {
+  .security-page {
+    padding: 36px 20px 60px;
+  }
+
+  .security-page > h1 {
+    font-size: 40px;
+  }
+
+  .security-panel {
+    padding: 20px;
+  }
+
+  .passkey-register-form > div,
+  .passkey-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .passkey-confirm-actions {
+    justify-content: flex-end;
+  }
 }
 
 /* Workspace navigation */

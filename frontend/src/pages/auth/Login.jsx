@@ -6,6 +6,8 @@ import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import { login } from "../../services/authService";
 import GoogleAuthButton from "../../components/auth/GoogleAuthButton";
+import PasskeyAuthButton from "../../components/auth/PasskeyAuthButton";
+import { isPasskeySupported } from "../../services/passkeyService";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -75,7 +77,8 @@ export default function Login() {
           )}
           <Button type="submit" disabled={loading}>{loading ? "Signing in…" : "Sign in"}</Button>
         </form>
-        <GoogleAuthButton />
+        <PasskeyAuthButton />
+        <GoogleAuthButton showDivider={!isPasskeySupported()} />
         <div className="auth-switch">New to AskLAW? <Link className="text-link" to="/signup">Create an account</Link></div>
       </Card>
     </AuthLayout>

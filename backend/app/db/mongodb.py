@@ -11,6 +11,8 @@ conversation_collection = db["conversations"]
 document_collection = db["documents"]
 auth_code_collection = db["auth_codes"]
 oauth_exchange_collection = db["oauth_exchanges"]
+passkey_collection = db["passkey_credentials"]
+passkey_challenge_collection = db["passkey_challenges"]
 
 
 def ensure_indexes():
@@ -54,5 +56,24 @@ def ensure_indexes():
     oauth_exchange_collection.create_index(
         [("expires_at", 1)],
         name="oauth_exchanges_expiry_ttl",
+        expireAfterSeconds=0,
+    )
+    passkey_collection.create_index(
+        [("credential_id", 1)],
+        name="passkey_credential_id_unique",
+        unique=True,
+    )
+    passkey_collection.create_index(
+        [("user_id", 1), ("created_at", -1)],
+        name="passkeys_user_created_at",
+    )
+    passkey_challenge_collection.create_index(
+        [("flow_id", 1)],
+        name="passkey_challenges_flow_id_unique",
+        unique=True,
+    )
+    passkey_challenge_collection.create_index(
+        [("expires_at", 1)],
+        name="passkey_challenges_expiry_ttl",
         expireAfterSeconds=0,
     )

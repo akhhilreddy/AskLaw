@@ -7,6 +7,7 @@ import {
   PanelLeftClose,
   Pencil,
   Plus,
+  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
@@ -269,6 +270,13 @@ export default function Sidebar({
               className={({ isActive }) => (isActive ? "active" : "")}
             >
               <FileText size={17} /> Documents
+            </NavLink>
+            <NavLink
+              to="/security"
+              onClick={onClose}
+              className={({ isActive }) => (isActive ? "active" : "")}
+            >
+              <ShieldCheck size={17} /> Security
             </NavLink>
           </nav>
         </div>

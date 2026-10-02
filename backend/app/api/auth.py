@@ -20,6 +20,8 @@ from fastapi.responses import RedirectResponse
 from app.schemas.auth import (
     EmailRequest,
     GoogleExchangeRequest,
+    PasskeyAuthenticationVerifyRequest,
+    PasskeyRegistrationVerifyRequest,
     ResetPasswordRequest,
     SignUpRequest,
     UserLogin,
@@ -44,6 +46,15 @@ from app.services.google_oauth_service import (
     create_exchange_code,
     exchange_google_code,
     find_or_create_google_user,
+)
+from app.services.passkey_service import (
+    PasskeyError,
+    begin_authentication as begin_passkey_authentication,
+    begin_registration as begin_passkey_registration,
+    complete_authentication as complete_passkey_authentication,
+    complete_registration as complete_passkey_registration,
+    delete_passkey as delete_user_passkey,
+    list_passkeys as list_user_passkeys,
 )
 from app.utils.security import create_token
 
@@ -114,7 +125,10 @@ def _google_frontend_redirect(**parameters: str) -> str:
 
 @router.get("/providers")
 def auth_providers():
-    return {"google": settings.google_oauth_enabled}
+    return {
+        "google": settings.google_oauth_enabled,
+        "passkey": True,
+    }
 
 
 @router.get("/google/start")
@@ -207,6 +221,96 @@ def google_exchange(payload: GoogleExchangeRequest, response: Response):
     refresh_token = create_refresh_token(data=token_payload)
     set_refresh_cookie(response, refresh_token)
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post(
+    "/passkeys/register/options",
+    dependencies=[Depends(require_trusted_origin)],
+)
+def passkey_registration_options(current_user=Depends(get_current_user)):
+    return begin_passkey_registration(current_user)
+
+
+@router.post(
+    "/passkeys/register/verify",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_trusted_origin)],
+)
+def passkey_registration_verify(
+    payload: PasskeyRegistrationVerifyRequest,
+    current_user=Depends(get_current_user),
+):
+    try:
+        return complete_passkey_registration(
+            current_user,
+            payload.flow_id,
+            payload.credential,
+            payload.name,
+        )
+    except PasskeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/passkeys/authenticate/options",
+    dependencies=[Depends(require_trusted_origin)],
+)
+def passkey_authentication_options():
+    return begin_passkey_authentication()
+
+
+@router.post(
+    "/passkeys/authenticate/verify",
+    dependencies=[Depends(require_trusted_origin)],
+)
+def passkey_authentication_verify(
+    payload: PasskeyAuthenticationVerifyRequest,
+    response: Response,
+):
+    try:
+        user = complete_passkey_authentication(
+            payload.flow_id,
+            payload.credential,
+        )
+    except PasskeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    token_payload = _token_payload(user)
+    access_token = create_access_token(data=token_payload)
+    refresh_token = create_refresh_token(data=token_payload)
+    set_refresh_cookie(response, refresh_token)
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.get("/passkeys")
+def passkeys(current_user=Depends(get_current_user)):
+    return list_user_passkeys(current_user)
+
+
+@router.delete(
+    "/passkeys/{credential_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_trusted_origin)],
+)
+def delete_passkey(
+    credential_id: str,
+    current_user=Depends(get_current_user),
+):
+    if not 1 <= len(credential_id) <= 1024 or not delete_user_passkey(
+        current_user,
+        credential_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Passkey not found",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)

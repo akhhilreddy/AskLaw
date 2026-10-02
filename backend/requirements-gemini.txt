@@ -19,3 +19,4 @@ python-multipart==0.0.32
 qdrant-client==1.19.0
 redis==8.1.0
 uvicorn==0.51.0
+webauthn==3.0.1

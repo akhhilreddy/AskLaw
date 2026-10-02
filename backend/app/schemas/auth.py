@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, EmailStr, Field, StringConstraints, field_validator
 
@@ -54,3 +54,24 @@ class ResetPasswordRequest(EmailRequest):
 
 class GoogleExchangeRequest(BaseModel):
     code: Annotated[str, StringConstraints(min_length=32, max_length=256)]
+
+
+PasskeyFlowId = Annotated[
+    str,
+    StringConstraints(pattern=r"^[A-Za-z0-9_-]{32,128}$"),
+]
+PasskeyName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=80),
+]
+
+
+class PasskeyRegistrationVerifyRequest(BaseModel):
+    flow_id: PasskeyFlowId
+    credential: dict[str, Any]
+    name: PasskeyName = "Passkey"
+
+
+class PasskeyAuthenticationVerifyRequest(BaseModel):
+    flow_id: PasskeyFlowId
+    credential: dict[str, Any]

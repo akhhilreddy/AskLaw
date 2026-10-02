@@ -16,6 +16,8 @@ const unauthenticatedPaths = new Set([
   "/auth/reset-password",
   "/auth/providers",
   "/auth/google/exchange",
+  "/auth/passkeys/authenticate/options",
+  "/auth/passkeys/authenticate/verify",
   "/auth/refresh",
   "/auth/token",
 ]);

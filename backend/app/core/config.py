@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = ""
     GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = Field(default=10, ge=5, le=30)
     GOOGLE_OAUTH_EXCHANGE_EXPIRE_MINUTES: int = Field(default=2, ge=1, le=10)
+    WEBAUTHN_RP_ID: str = ""
+    WEBAUTHN_RP_NAME: str = "AskLAW"
+    WEBAUTHN_ORIGIN: str = ""
+    WEBAUTHN_CHALLENGE_EXPIRE_MINUTES: int = Field(default=5, ge=1, le=10)
     MAX_DOCUMENT_UPLOAD_BYTES: int = Field(default=20 * 1024 * 1024, gt=0)
     MAX_DOCUMENT_PAGES: int = Field(default=500, gt=0)
     MAX_DOCUMENT_TEXT_BYTES: int = Field(default=5 * 1024 * 1024, gt=0)
@@ -83,12 +87,25 @@ class Settings(BaseSettings):
             )
         )
 
+    @property
+    def webauthn_origin(self) -> str:
+        return (self.WEBAUTHN_ORIGIN.strip() or self.FRONTEND_URL).rstrip("/")
+
+    @property
+    def webauthn_rp_id(self) -> str:
+        configured = self.WEBAUTHN_RP_ID.strip().lower()
+        if configured:
+            return configured
+        return (urlparse(self.webauthn_origin).hostname or "").lower()
+
     @model_validator(mode="after")
     def validate_security_settings(self):
         origins = self.cors_origins
         searxng_url = urlparse(self.SEARXNG_URL)
         frontend_url = urlparse(self.FRONTEND_URL)
         google_redirect_uri = urlparse(self.GOOGLE_REDIRECT_URI)
+        webauthn_origin = urlparse(self.webauthn_origin)
+        webauthn_rp_id = self.webauthn_rp_id
 
         if (
             frontend_url.scheme not in {"http", "https"}
@@ -121,6 +138,33 @@ class Settings(BaseSettings):
             or google_redirect_uri.fragment
         ):
             raise ValueError("GOOGLE_REDIRECT_URI must be a valid HTTP(S) URL")
+
+        if (
+            webauthn_origin.scheme not in {"http", "https"}
+            or not webauthn_origin.hostname
+            or webauthn_origin.username
+            or webauthn_origin.password
+            or webauthn_origin.params
+            or webauthn_origin.query
+            or webauthn_origin.fragment
+            or webauthn_origin.path not in {"", "/"}
+        ):
+            raise ValueError("WEBAUTHN_ORIGIN must be an HTTP(S) origin")
+
+        webauthn_hostname = (webauthn_origin.hostname or "").lower()
+        if (
+            not webauthn_rp_id
+            or "://" in webauthn_rp_id
+            or "/" in webauthn_rp_id
+            or ":" in webauthn_rp_id
+            or not (
+                webauthn_hostname == webauthn_rp_id
+                or webauthn_hostname.endswith(f".{webauthn_rp_id}")
+            )
+        ):
+            raise ValueError(
+                "WEBAUTHN_RP_ID must be the WebAuthn origin host or its parent domain"
+            )
 
         if (
             searxng_url.scheme not in {"http", "https"}
@@ -180,6 +224,9 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "GOOGLE_REDIRECT_URI must use HTTPS in production"
                 )
+
+            if webauthn_origin.scheme != "https":
+                raise ValueError("WEBAUTHN_ORIGIN must use HTTPS in production")
 
             if (
                 qdrant_hostname.endswith(".cloud.qdrant.io")

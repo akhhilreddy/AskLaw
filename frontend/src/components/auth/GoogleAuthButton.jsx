@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAuthProviders, startGoogleSignIn } from "../../services/authService";
 
-export default function GoogleAuthButton() {
+export default function GoogleAuthButton({ showDivider = true }) {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function GoogleAuthButton() {
 
   return (
     <div className="oauth-section">
-      <div className="auth-divider"><span>or</span></div>
+      {showDivider && <div className="auth-divider"><span>or</span></div>}
       <button className="google-auth-button" type="button" onClick={startGoogleSignIn}>
         <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
           <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.06H12v3.9h5.38a4.6 4.6 0 0 1-2 3.02v2.53h3.24c1.9-1.75 2.98-4.33 2.98-7.39Z"/>
