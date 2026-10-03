@@ -2,7 +2,8 @@ import asyncio
 import json
 import os
 import unittest
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 from pydantic import ValidationError
@@ -20,6 +21,7 @@ from app.mcp import server as mcp_server
 from app.schemas.chat import ChatMessage
 from app.services import ai_service
 from app.services import retrieval_orchestrator
+from app.services import wikipedia_service
 from app.services.prompt_service import build_legal_prompt
 from app.services.query_router import QueryRoute, route_query
 from app.services.web_source_ranker import rank_web_sources
@@ -292,7 +294,7 @@ class WebEvidenceQualityTests(unittest.TestCase):
             new=AsyncMock(return_value=search_result),
         ):
             sources = asyncio.run(
-                retrieval_orchestrator.retrieve_web("what is an affidavit?")
+                retrieval_orchestrator.retrieve_web("affidavit rules")
             )
         self.assertEqual(sources, [])
 
@@ -341,6 +343,191 @@ class WebEvidenceQualityTests(unittest.TestCase):
         self.assertIn("web sources", events[0]["content"])
         self.assertEqual(events[1]["route"], "web")
         client.chat.completions.create.assert_not_called()
+
+    def test_insufficient_answer_is_not_scored_as_a_legal_claim(self):
+        source = rank_web_sources("what are human rights?", [{
+            "title": "Wikipedia: Human rights",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "content": "Human rights are moral principles or norms.",
+            "engine": "wikipedia",
+        }])
+        answer = (
+            "The available web sources do not contain enough information "
+            "to answer that part of the question."
+        )
+        stream_chunk = SimpleNamespace(choices=[
+            SimpleNamespace(delta=SimpleNamespace(content=answer))
+        ])
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+            create=Mock(return_value=[stream_chunk])
+        )))
+        with patch.object(
+            ai_service,
+            "retrieve_for_query",
+            new=AsyncMock(return_value={
+                "route": "web", "rag_results": [], "web_results": source,
+            }),
+        ), patch.object(ai_service, "client", client):
+            events = [json.loads(item) for item in ai_service.stream_response(
+                [ChatMessage(role="user", content="what are human rights?")],
+                user_id="user-1",
+            )]
+
+        self.assertFalse(any(item["type"] == "verification" for item in events))
+        self.assertEqual(events[-1]["route"], "web")
+
+
+class WikipediaDefinitionTests(unittest.TestCase):
+    def test_only_simple_non_current_questions_use_definition_lookup(self):
+        self.assertEqual(
+            wikipedia_service.definition_subject("what is pocso act?"),
+            "pocso act",
+        )
+        self.assertEqual(
+            wikipedia_service.definition_subject("What are human rights?"),
+            "human rights",
+        )
+        self.assertIsNone(
+            wikipedia_service.definition_subject("What is the latest privacy judgment?")
+        )
+        self.assertIsNone(
+            wikipedia_service.definition_subject("Explain Article 32")
+        )
+
+    def test_definition_lookup_returns_attributed_source_text(self):
+        client = FakeAsyncClient(response=FakeResponse({
+            "query": {"pages": [{
+                "pageid": 123,
+                "title": "Protection of Children from Sexual Offences Act, 2012",
+                "extract": "The POCSO Act is an Act of Parliament of India.",
+            }]},
+        }))
+        with patch.object(
+            wikipedia_service.httpx,
+            "AsyncClient",
+            return_value=client,
+        ):
+            source = asyncio.run(
+                wikipedia_service.search_wikipedia_definition("pocso act")
+            )
+
+        self.assertEqual(client.requests[0][0], wikipedia_service.WIKIPEDIA_API_URL)
+        self.assertEqual(client.requests[0][1]["gsrsearch"], "pocso act")
+        self.assertEqual(source["engine"], "wikipedia")
+        self.assertEqual(source["url"], "https://en.wikipedia.org/?curid=123")
+        self.assertIn("POCSO Act", source["content"])
+
+    def test_definition_lookup_failure_returns_no_source(self):
+        client = FakeAsyncClient(response=FakeResponse({}, status_code=503))
+        with patch.object(
+            wikipedia_service.httpx,
+            "AsyncClient",
+            return_value=client,
+        ):
+            source = asyncio.run(
+                wikipedia_service.search_wikipedia_definition("law")
+            )
+        self.assertIsNone(source)
+
+    def test_simple_definition_uses_attributed_source_not_searxng(self):
+        source = {
+            "title": "Wikipedia: Law",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "content": "Law is a set of rules enforced to regulate behavior.",
+            "engine": "wikipedia",
+        }
+        with patch.object(
+            retrieval_orchestrator,
+            "search_wikipedia_definition",
+            new=AsyncMock(return_value=source),
+        ) as wiki, patch.object(
+            retrieval_orchestrator,
+            "search_web",
+            new=AsyncMock(),
+        ) as searxng:
+            results = asyncio.run(
+                retrieval_orchestrator.retrieve_web("what is law?")
+            )
+
+        wiki.assert_awaited_once_with("law")
+        searxng.assert_not_called()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["engine"], "wikipedia")
+
+    def test_failed_definition_lookup_does_not_emit_unrelated_sources(self):
+        with patch.object(
+            retrieval_orchestrator,
+            "search_wikipedia_definition",
+            new=AsyncMock(return_value=None),
+        ), patch.object(
+            retrieval_orchestrator,
+            "search_web",
+            new=AsyncMock(),
+        ) as searxng:
+            results = asyncio.run(
+                retrieval_orchestrator.retrieve_web("what is law?")
+            )
+
+        self.assertEqual(results, [])
+        searxng.assert_not_called()
+
+    def test_current_web_research_keeps_searxng_path(self):
+        with patch.object(
+            retrieval_orchestrator,
+            "search_wikipedia_definition",
+            new=AsyncMock(),
+        ) as wiki, patch.object(
+            retrieval_orchestrator,
+            "search_web",
+            new=AsyncMock(return_value={"results": []}),
+        ) as searxng:
+            asyncio.run(
+                retrieval_orchestrator.retrieve_web(
+                    "What is the latest privacy judgment?"
+                )
+            )
+
+        wiki.assert_not_called()
+        searxng.assert_called()
+
+    def test_definition_evidence_flows_to_answer_and_verification(self):
+        source = rank_web_sources("what is law?", [{
+            "title": "Wikipedia: Law",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "content": (
+                "Law is a set of rules that are created and enforced by "
+                "governmental or societal institutions to regulate behavior."
+            ),
+            "engine": "wikipedia",
+        }])
+        answer = (
+            "Law is a set of rules created and enforced by governmental "
+            "or societal institutions to regulate behavior."
+        )
+        stream_chunk = SimpleNamespace(choices=[
+            SimpleNamespace(delta=SimpleNamespace(content=answer))
+        ])
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+            create=Mock(return_value=[stream_chunk])
+        )))
+
+        with patch.object(
+            ai_service,
+            "retrieve_for_query",
+            new=AsyncMock(return_value={
+                "route": "web", "rag_results": [], "web_results": source,
+            }),
+        ), patch.object(ai_service, "client", client):
+            events = [json.loads(item) for item in ai_service.stream_response(
+                [ChatMessage(role="user", content="what is law?")],
+                user_id="user-1",
+            )]
+
+        sources_event = next(item for item in events if item["type"] == "sources")
+        verification = next(item for item in events if item["type"] == "verification")
+        self.assertEqual(sources_event["sources"][0]["engine"], "wikipedia")
+        self.assertEqual(verification["grounding_score"], 1.0)
+        self.assertEqual(events[-1]["route"], "web")
 
 
 if __name__ == "__main__":

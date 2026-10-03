@@ -676,7 +676,13 @@ def stream_response(
     verification = None
     grounding_score = None
 
-    if not is_conversation:
+    is_insufficient_evidence_response = (
+        not is_conversation
+        and generated_answer.casefold()
+        == insufficient_evidence_message(route).casefold()
+    )
+
+    if not is_conversation and not is_insufficient_evidence_response:
         verification = {
             "claims": [],
             "summary": {

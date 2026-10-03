@@ -19,7 +19,7 @@ Flow:
         |
         +---- RAG ------> Local document retrieval
         |
-        +---- WEB ------> Targeted web retrieval -> ranking
+        +---- WEB ------> Definition lookup or targeted web retrieval -> ranking
         |
         +---- HYBRID ---> RAG + targeted web retrieval
         |
@@ -57,6 +57,10 @@ from app.mcp.server import (
 
 from app.services.web_source_ranker import (
     rank_web_sources,
+)
+from app.services.wikipedia_service import (
+    definition_subject,
+    search_wikipedia_definition,
 )
 
 
@@ -802,9 +806,24 @@ async def retrieve_web(
     Normal query:
         one SearXNG search.
 
+    Simple, non-current definition query:
+        one attributed Wikipedia extract; no unreliable metasearch results.
+
     Current/recent legal query:
         several targeted SearXNG searches in parallel.
     """
+
+    subject = definition_subject(query)
+    if subject:
+        # Free-hosted metasearch engines can return unrelated pages for
+        # simple definitions. Use a short, attributed encyclopedia extract
+        # for this narrow case; never use it for current legal research.
+        definition_source = await search_wikipedia_definition(subject)
+        return rank_web_sources(
+            query=query,
+            results=[definition_source] if definition_source else [],
+            limit=limit,
+        )
 
     targeted_queries = _build_targeted_web_queries(
         query
