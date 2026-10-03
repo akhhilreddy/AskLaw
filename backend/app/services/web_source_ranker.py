@@ -801,17 +801,6 @@ def _query_relevance(
     return min(score, 1.0)
 
 
-def _topic_tokens(query: str) -> set[str]:
-    """Keep query terms that identify a subject, not just a date or intent."""
-
-    return {
-        token
-        for token in _tokenize(query)
-        if token not in QUERY_TOPIC_STOPWORDS
-        and not (len(token) == 4 and token.isdigit())
-    }
-
-
 def _topic_relevance(
     query: str,
     result: dict,
@@ -824,7 +813,11 @@ def _topic_relevance(
     look highly relevant to the actual topic.
     """
 
-    topic_tokens = _topic_tokens(query)
+    topic_tokens = {
+        token
+        for token in _tokenize(query)
+        if token not in QUERY_TOPIC_STOPWORDS
+    }
 
     if not topic_tokens:
         return 0.0
@@ -1397,8 +1390,8 @@ def _score_result(
             0.05 * commentary
         )
 
-        # Topic-mismatched results are filtered before they reach the
-        # answer prompt; this score also separates partially matched hits.
+        # Completely topic-mismatched results are still allowed to pass
+        # through the pipeline, but are strongly demoted.
         if topic_relevance == 0.0:
             final_score *= 0.45
         elif topic_relevance < 0.30:
@@ -1595,14 +1588,6 @@ def rank_web_sources(
         )
         for result in cleaned
     ]
-
-    # A search engine can return unrelated results with a successful HTTP
-    # response. Do not present those results as evidence to the user or LLM.
-    if _topic_tokens(query):
-        ranked = [
-            item for item in ranked
-            if item["ranking"]["topic_relevance_score"] > 0
-        ]
 
     ranked.sort(
         key=lambda item: (
