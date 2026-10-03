@@ -1,7 +1,8 @@
 import asyncio
+import json
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from pydantic import ValidationError
@@ -16,7 +17,12 @@ os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
 
 from app.core.config import Settings
 from app.mcp import server as mcp_server
+from app.schemas.chat import ChatMessage
+from app.services import ai_service
+from app.services import retrieval_orchestrator
+from app.services.prompt_service import build_legal_prompt
 from app.services.query_router import QueryRoute, route_query
+from app.services.web_source_ranker import rank_web_sources
 
 
 def make_settings(**overrides):
@@ -248,6 +254,93 @@ class SearxngMcpTests(unittest.TestCase):
             route_query("Latest development about Article 32"),
             QueryRoute.HYBRID,
         )
+
+
+class WebEvidenceQualityTests(unittest.TestCase):
+    def test_unrelated_search_hits_are_not_presented_as_evidence(self):
+        ranked = rank_web_sources(
+            "what is an affidavit?",
+            [
+                {
+                    "title": "Summer holiday destinations",
+                    "url": "https://example.com/holidays",
+                    "content": "Popular summer travel ideas.",
+                },
+                {
+                    "title": "Affidavit definition",
+                    "url": "https://example.org/affidavit",
+                    "content": "An affidavit is a written statement made under oath.",
+                },
+            ],
+        )
+        self.assertEqual(
+            [item["title"] for item in ranked],
+            ["Affidavit definition"],
+        )
+
+    def test_retrieval_does_not_pass_unrelated_hits_to_chat(self):
+        search_result = {
+            "results": [{
+                "title": "Summer holiday destinations",
+                "url": "https://example.com/holidays",
+                "content": "Popular summer travel ideas.",
+            }],
+        }
+        with patch.object(
+            retrieval_orchestrator,
+            "search_web",
+            new=AsyncMock(return_value=search_result),
+        ):
+            sources = asyncio.run(
+                retrieval_orchestrator.retrieve_web("what is an affidavit?")
+            )
+        self.assertEqual(sources, [])
+
+    def test_matching_only_the_year_is_not_topic_evidence(self):
+        ranked = rank_web_sources(
+            "latest Supreme Court privacy judgment 2026",
+            [{
+                "title": "Travel ideas for 2026",
+                "url": "https://example.com/travel-2026",
+                "content": "Holiday destinations this year.",
+            }],
+        )
+        self.assertEqual(ranked, [])
+
+    def test_prompt_names_the_actual_evidence_type(self):
+        for route, expected in (
+            ("rag", "The provided documents"),
+            ("web", "The available web sources"),
+            ("hybrid", "The available document and web sources"),
+        ):
+            with self.subTest(route=route):
+                prompt = build_legal_prompt("What is an affidavit?", route=route)
+                self.assertIn(expected, prompt)
+                if route == "web":
+                    self.assertNotIn("The provided documents", prompt)
+
+    def test_no_web_evidence_returns_honest_answer_without_verification(self):
+        with patch.object(
+            ai_service,
+            "retrieve_for_query",
+            new=AsyncMock(return_value={
+                "route": "web",
+                "rag_results": [],
+                "web_results": [],
+            }),
+        ), patch.object(ai_service, "client") as client:
+            events = [
+                json.loads(item)
+                for item in ai_service.stream_response(
+                    [ChatMessage(role="user", content="what is an affidavit?")],
+                    user_id="user-1",
+                )
+            ]
+
+        self.assertEqual([event["type"] for event in events], ["token", "route"])
+        self.assertIn("web sources", events[0]["content"])
+        self.assertEqual(events[1]["route"], "web")
+        client.chat.completions.create.assert_not_called()
 
 
 if __name__ == "__main__":

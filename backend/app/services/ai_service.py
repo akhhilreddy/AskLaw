@@ -54,6 +54,7 @@ from app.services.retrieval_orchestrator import (
 
 from app.services.prompt_service import (
     build_legal_prompt,
+    insufficient_evidence_message,
 )
 
 
@@ -433,6 +434,20 @@ def stream_response(
         len(rag_results),
         len(web_results),
     )
+
+    if not is_conversation and not rag_results and not web_results:
+        # No evidence exists to ground or verify an AI-generated legal answer.
+        # Keep the normal streaming event shape without inventing sources or
+        # displaying a meaningless 0% grounding score.
+        yield json.dumps({
+            "type": "token",
+            "content": insufficient_evidence_message(route),
+        }) + "\n"
+        yield json.dumps({
+            "type": "route",
+            "route": route,
+        }) + "\n"
+        return
 
     # =====================================================
     # BUILD STRUCTURED EVIDENCE

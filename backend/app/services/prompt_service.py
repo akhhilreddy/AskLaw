@@ -372,6 +372,31 @@ Reason:
 # BUILD FINAL LEGAL PROMPT
 # =========================================================
 
+INSUFFICIENT_EVIDENCE_MESSAGES = {
+    "rag": (
+        "The provided documents do not contain enough information "
+        "to answer that part of the question."
+    ),
+    "web": (
+        "The available web sources do not contain enough information "
+        "to answer that part of the question."
+    ),
+    "hybrid": (
+        "The available document and web sources do not contain enough "
+        "information to answer that part of the question."
+    ),
+}
+
+
+def insufficient_evidence_message(route: str) -> str:
+    """Describe missing evidence without misidentifying its source."""
+
+    return INSUFFICIENT_EVIDENCE_MESSAGES.get(
+        route,
+        INSUFFICIENT_EVIDENCE_MESSAGES["rag"],
+    )
+
+
 def build_legal_prompt(
     query: str,
     retrieved_chunks: list | None = None,
@@ -439,6 +464,8 @@ def build_legal_prompt(
         "hybrid",
     }:
         route = "rag"
+
+    missing_evidence_message = insufficient_evidence_message(route)
 
     # =====================================================
     # BUILD SOURCE MATERIAL
@@ -822,8 +849,7 @@ WHEN INFORMATION IS MISSING
 If SOURCE MATERIAL does not contain enough
 information to answer a requested part, say:
 
-"The provided documents do not contain enough
-information to answer that part of the question."
+"{missing_evidence_message}"
 
 Do not guess.
 
@@ -961,8 +987,7 @@ REMOVE THAT STATEMENT.
 
 If the source is insufficient, say:
 
-"The provided documents do not contain enough
-information to answer that part of the question."
+"{missing_evidence_message}"
 
 ==================================================
 DISCLAIMER

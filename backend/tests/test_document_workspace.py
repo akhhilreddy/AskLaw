@@ -883,7 +883,11 @@ class AuthAndChatTests(unittest.TestCase):
         from app.services import ai_service
 
         retrieval = AsyncMock(
-            return_value={"route": "rag", "rag_results": [], "web_results": []}
+            return_value={
+                "route": "rag",
+                "rag_results": [{"document_id": "doc-1", "text": "Article 32 evidence"}],
+                "web_results": [],
+            }
         )
         stream_chunk = SimpleNamespace(
             choices=[SimpleNamespace(delta=SimpleNamespace(content="Supported answer."))]
