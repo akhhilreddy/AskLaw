@@ -75,7 +75,8 @@ def require_trusted_origin(request: Request):
     api_origin = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
 
     # Non-browser clients may omit Origin. Browser POST requests include it,
-    # and SameSite=Lax remains a second line of defense for the cookie itself.
+    # Cross-site production refresh cookies use SameSite=None, so retain this
+    # explicit trusted-origin check rather than relying on SameSite alone.
     if origin and origin.rstrip("/") not in {
         *settings.cors_origins,
         api_origin,
@@ -86,6 +87,11 @@ def require_trusted_origin(request: Request):
         )
 
 
+def refresh_cookie_samesite() -> str:
+    # Netlify and Render are different sites. Keep localhost behavior unchanged.
+    return "none" if settings.APP_ENV.lower() in {"prod", "production"} else "lax"
+
+
 def set_refresh_cookie(response: Response, refresh_token: str):
     lifetime = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
@@ -94,7 +100,7 @@ def set_refresh_cookie(response: Response, refresh_token: str):
         value=refresh_token,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=refresh_cookie_samesite(),
         path=REFRESH_COOKIE_PATH,
         max_age=int(lifetime.total_seconds()),
         expires=datetime.now(timezone.utc) + lifetime,
@@ -643,7 +649,7 @@ def logout(response: Response):
         path=REFRESH_COOKIE_PATH,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=refresh_cookie_samesite(),
     )
 
     return {

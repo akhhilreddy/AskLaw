@@ -650,6 +650,30 @@ class AuthAndChatTests(unittest.TestCase):
         self.assertIn("Max-Age=0", deleted_cookie)
         self.assertIn("Path=/auth", deleted_cookie)
 
+    def test_production_refresh_cookie_supports_cross_site_and_matching_logout(self):
+        from app.api import auth
+
+        for environment in ("production", "prod"):
+            with self.subTest(environment=environment), patch.object(
+                auth.settings, "APP_ENV", environment
+            ), patch.object(auth.settings, "COOKIE_SECURE", True):
+                response = Response()
+                auth.set_refresh_cookie(response, "refresh")
+                cookie = response.headers["set-cookie"]
+                self.assertIn("SameSite=none", cookie)
+                self.assertIn("Secure", cookie)
+                self.assertIn("HttpOnly", cookie)
+                self.assertIn("Path=/auth", cookie)
+
+                logout_response = Response()
+                auth.logout(logout_response)
+                deleted_cookie = logout_response.headers["set-cookie"]
+                self.assertIn("SameSite=none", deleted_cookie)
+                self.assertIn("Secure", deleted_cookie)
+                self.assertIn("HttpOnly", deleted_cookie)
+                self.assertIn("Path=/auth", deleted_cookie)
+                self.assertIn("Max-Age=0", deleted_cookie)
+
     def test_refresh_rejects_missing_invalid_and_deleted_user_sessions(self):
         from app.api import auth
 
