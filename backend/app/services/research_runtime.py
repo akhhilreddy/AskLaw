@@ -11,6 +11,8 @@ import httpx
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class RedactSearchTransportLogs(logging.Filter):
     def filter(self, record):
@@ -75,28 +77,46 @@ class SharedWebReadiness:
         self.result = False
 
     def _probe(self, url, budget):
-        end = time.monotonic() + budget
+        started = time.monotonic()
+        end = started + budget
+        attempt = 0
         parts = urlsplit(url)
         health_url = urlunsplit((parts.scheme, parts.netloc, "/healthz", "", ""))
         # Sync worker is shared across callers/event loops, not asyncio locks.
         with httpx.Client(follow_redirects=False) as client:
             while time.monotonic() < end:
+                attempt += 1
+                status = "http_error"
                 try:
                     response = client.get(health_url, timeout=min(5, max(.001, end - time.monotonic())))
                     if response.status_code == 200 and time.monotonic() < end:
+                        logger.info("web_readiness attempt=%d elapsed_seconds=%.3f status=ok",
+                                    attempt, time.monotonic() - started)
                         return True
+                    status = "502" if response.status_code == 502 else "http_error"
+                    if response.status_code == 200:
+                        status = "timeout"
+                except httpx.TimeoutException:
+                    status = "timeout"
+                except httpx.NetworkError:
+                    status = "connection_error"
                 except (httpx.HTTPError, ValueError):
-                    pass
+                    status = "request_error"
+                logger.info("web_readiness attempt=%d elapsed_seconds=%.3f status=%s",
+                            attempt, time.monotonic() - started, status)
                 wait = min(1, max(0, end - time.monotonic()))
                 if wait:
                     time.sleep(wait)
         return False
 
     def _probe_and_record(self, url, budget):
+        started = time.monotonic()
         try:
             result = bool(self._probe(url, budget))
         except Exception:
             result = False
+        logger.info("web_readiness_complete elapsed_seconds=%.3f status=%s",
+                    time.monotonic() - started, "ok" if result else "unavailable")
         with self.lock:
             # Record BEFORE the Future becomes done, so an immediate probe
             # cannot race another event loop into launching a duplicate.
@@ -117,6 +137,7 @@ class SharedWebReadiness:
                 self.ready_at = None
 
     async def ensure(self):
+        started = time.monotonic()
         url = settings.SEARXNG_URL
         budget = min(settings.SEARXNG_READINESS_BUDGET_SECONDS, remaining_seconds())
         waiter_end = time.monotonic() + budget
@@ -126,6 +147,7 @@ class SharedWebReadiness:
             if self.future is None or self.future.done():
                 self.future = self.executor.submit(self._probe_and_record, url, budget)
             future = self.future
+        logger.info("web_readiness_wait budget_seconds=%.3f", budget)
         wrapped = asyncio.wrap_future(future)
         try:
             await asyncio.wait_for(asyncio.shield(wrapped), timeout=min(.25, budget))
@@ -136,6 +158,8 @@ class SharedWebReadiness:
             progress("web_ready" if result else "web_unavailable")
             return bool(result)
         except Exception:
+            logger.info("web_readiness_wait_complete elapsed_seconds=%.3f status=unavailable",
+                        time.monotonic() - started)
             progress("web_unavailable")
             return False
 

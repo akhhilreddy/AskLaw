@@ -3,6 +3,7 @@ import os
 import threading
 import time
 import unittest
+import httpx
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,6 +16,51 @@ from app.services import research_runtime as runtime, retrieval_orchestrator as 
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_readiness_diagnostics_are_sanitized_and_do_not_change_attempt_timeout(self):
+        state = runtime.SharedWebReadiness()
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=False)
+        sensitive = "https://private.example/secret?q=private-question"
+        client.get.side_effect = [
+            httpx.ReadTimeout(sensitive), Mock(status_code=502),
+            httpx.ConnectError(sensitive), Mock(status_code=200),
+        ]
+        try:
+            with patch.object(runtime.httpx, "Client", return_value=client), patch.object(runtime.time, "sleep"), self.assertLogs(runtime.logger, level="INFO") as logs:
+                self.assertTrue(state._probe(sensitive, 40))
+            self.assertEqual(client.get.call_count, 4)
+            self.assertTrue(all(call.kwargs["timeout"] == 5 for call in client.get.call_args_list))
+            for number, status in enumerate(("timeout", "502", "connection_error", "ok"), 1):
+                self.assertIn("attempt=%d" % number, logs.output[number - 1])
+                self.assertIn("elapsed_seconds=", logs.output[number - 1])
+                self.assertIn("status=" + status, logs.output[number - 1])
+            self.assertNotIn("private", "\n".join(logs.output))
+            self.assertNotIn("https://", "\n".join(logs.output))
+        finally:
+            state.executor.shutdown(wait=True)
+
+    def test_five_second_timeouts_allow_seven_attempts_in_forty_seconds(self):
+        state = runtime.SharedWebReadiness()
+        clock = [0.0]
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=False)
+        def request(*_args, timeout):
+            clock[0] += timeout
+            raise httpx.ReadTimeout("not logged")
+        def sleep(seconds):
+            clock[0] += seconds
+        client.get.side_effect = request
+        try:
+            with patch.object(runtime.httpx, "Client", return_value=client), patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]), patch.object(runtime.time, "sleep", side_effect=sleep):
+                self.assertFalse(state._probe("https://example.test/search", 40))
+            self.assertEqual(client.get.call_count, 7)
+            self.assertEqual([call.kwargs["timeout"] for call in client.get.call_args_list], [5, 5, 5, 5, 5, 5, 4])
+            self.assertEqual(clock[0], 40)
+        finally:
+            state.executor.shutdown(wait=True)
+
     def test_immediate_probe_is_not_duplicated_across_event_loops(self):
         state = runtime.SharedWebReadiness()
         try:
