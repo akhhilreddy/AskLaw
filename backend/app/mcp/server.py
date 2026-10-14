@@ -5,6 +5,7 @@ import httpx
 from mcp.server.mcpserver import MCPServer
 
 from app.core.config import settings
+from app.services.research_runtime import remaining_seconds
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,8 @@ def _is_transient_search_error(exc: Exception) -> bool:
 async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> dict:
     for attempt in range(SEARXNG_MAX_ATTEMPTS):
         try:
-            response = await client.get(url, params=params)
+            async with asyncio.timeout(remaining_seconds()):
+                response = await client.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except Exception as exc:
@@ -45,6 +47,8 @@ async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> 
                 raise
 
             delay = SEARXNG_RETRY_DELAYS_SECONDS[attempt]
+            if delay >= remaining_seconds():
+                raise TimeoutError("Web research deadline exceeded") from None
             logger.warning(
                 "SearXNG request temporarily unavailable; retrying "
                 "attempt=%s/%s delay_seconds=%s error=%s",

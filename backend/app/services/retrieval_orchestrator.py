@@ -58,6 +58,9 @@ from app.mcp.server import (
 from app.services.web_source_ranker import (
     rank_web_sources,
 )
+from app.core.config import settings
+from app.services.research_runtime import deadline_context, rag_pool, ensure_web_ready
+import time
 
 
 # ============================================================
@@ -872,6 +875,10 @@ async def retrieve_web(
         several targeted SearXNG searches in parallel.
     """
 
+    if not await ensure_web_ready():
+        # Do not send search requests after readiness has exhausted its budget.
+        return []
+
     targeted_queries = _build_targeted_web_queries(
         query
     )
@@ -948,7 +955,7 @@ async def retrieve_web(
 # MAIN ASYNC ORCHESTRATOR
 # ============================================================
 
-async def retrieve_for_query(
+async def _retrieve_for_query(
     query: str,
     user_id: str,
     document_id: str | None = None,
@@ -998,7 +1005,7 @@ async def retrieve_for_query(
 
     if route_value == "rag":
 
-        rag_results = await asyncio.to_thread(
+        rag_results = await rag_pool.run(
             retrieve_rag,
             query,
             user_id,
@@ -1047,7 +1054,7 @@ async def retrieve_for_query(
 
     if route_value == "hybrid":
 
-        rag_task = asyncio.to_thread(
+        rag_task = rag_pool.run(
             retrieve_rag,
             query,
             user_id,
@@ -1077,7 +1084,7 @@ async def retrieve_for_query(
     # FALLBACK
     # ========================================================
 
-    rag_results = await asyncio.to_thread(
+    rag_results = await rag_pool.run(
         retrieve_rag,
         query,
         user_id,
@@ -1095,6 +1102,17 @@ async def retrieve_for_query(
 # ============================================================
 # SYNC HELPER
 # ============================================================
+
+async def retrieve_for_query(query, user_id, document_id=None, rag_limit=5, web_limit=5):
+    token = deadline_context.set(time.monotonic() + settings.RESEARCH_DEADLINE_SECONDS)
+    try:
+        return await asyncio.wait_for(
+            _retrieve_for_query(query, user_id, document_id, rag_limit, web_limit),
+            timeout=settings.RESEARCH_DEADLINE_SECONDS,
+        )
+    finally:
+        deadline_context.reset(token)
+
 
 def retrieve_for_query_sync(
     query: str,

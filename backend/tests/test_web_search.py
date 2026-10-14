@@ -258,6 +258,10 @@ class SearxngMcpTests(unittest.TestCase):
 
 
 class WebEvidenceQualityTests(unittest.TestCase):
+    def setUp(self):
+        readiness = patch.object(retrieval_orchestrator, "ensure_web_ready", new=AsyncMock(return_value=True))
+        readiness.start()
+        self.addCleanup(readiness.stop)
     def test_latest_judgment_search_discards_unrelated_results(self):
         search_result = {
             "results": [
