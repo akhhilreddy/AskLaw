@@ -237,6 +237,22 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual(result["task_id"], "task-1")
         self.assertEqual(result["filename"], "constitution.pdf")
 
+    def test_enqueue_failure_marks_only_unclaimed_document_failed(self):
+        pages = [SimpleNamespace(extract_text=lambda: "Article 32 provides remedies.")]
+        collection = FakeCollection()
+        upload = SimpleNamespace(file=io.BytesIO(b"%PDF-1.7"), filename="law.pdf", content_type="application/pdf", size=8)
+        with patch.object(document_service, "PdfReader", return_value=SimpleNamespace(pages=pages)), patch.object(document_service, "document_collection", collection), patch.object(document_service.index_document, "delay", side_effect=RuntimeError("secret redis URL")):
+            with self.assertRaises(HTTPException) as failure:
+                document_service.save_uploaded_document(upload, self.user_id)
+        self.assertEqual(failure.exception.status_code, 503)
+        self.assertNotIn("secret", failure.exception.detail)
+        query, update = collection.updates[-1]
+        self.assertEqual(query["user_id"], self.user_id)
+        self.assertEqual(query["status"], "uploaded")
+        self.assertEqual(query["indexing_task_id"], {"$exists": False})
+        self.assertEqual(update["$set"]["failure_code"], "enqueue_failed")
+        self.assertEqual(update["$set"]["status"], "failed")
+
     def test_upload_sanitizes_path_traversal_filename(self):
         pages = [SimpleNamespace(extract_text=lambda: "Article 32 provides remedies.")]
         collection = FakeCollection()

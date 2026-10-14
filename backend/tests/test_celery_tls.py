@@ -15,6 +15,16 @@ from app.core.celery_app import create_celery_app
 
 
 class CeleryRedisTlsTests(unittest.TestCase):
+    def test_redis_submission_and_result_connections_are_bounded(self):
+        app = create_celery_app("redis://localhost:6379/0", "redis://localhost:6379/1")
+        self.assertEqual(app.conf.broker_connection_timeout, 3)
+        self.assertEqual(app.conf.broker_transport_options["socket_timeout"], 3)
+        self.assertEqual(app.conf.broker_transport_options["socket_connect_timeout"], 3)
+        self.assertFalse(app.conf.broker_transport_options["retry_on_timeout"])
+        self.assertEqual(app.conf.task_publish_retry_policy["max_retries"], 1)
+        self.assertEqual(app.backend.connparams["socket_timeout"], 3)
+        self.assertEqual(app.backend.connparams["socket_connect_timeout"], 3)
+
     def test_local_redis_urls_do_not_enable_tls(self):
         app = create_celery_app(
             broker_url="redis://localhost:6379/0",

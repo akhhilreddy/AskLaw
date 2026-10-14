@@ -460,10 +460,21 @@ def save_uploaded_document(
     # SEND BACKGROUND INDEXING TASK
     # -----------------------------------------------------
 
-    task = index_document.delay(
-        document_id,
-        user_id,
-    )
+    try:
+        task = index_document.delay(document_id, user_id)
+    except Exception:
+        # A publish may be ambiguous (accepted but acknowledgement lost).
+        # Only fail an unclaimed upload; never overwrite a worker's live claim.
+        result = document_collection.update_one(
+            {"_id": result.inserted_id, "user_id": user_id, "status": "uploaded",
+             "indexing_task_id": {"$exists": False}},
+            {"$set": {"status": "failed", "failure_code": "enqueue_failed",
+                      "failed_at": datetime.now(timezone.utc)}},
+        )
+        detail = ("The indexing queue is temporarily unavailable. Your document was not queued. "
+                  "Delete the failed upload and try uploading again shortly.") if result.matched_count else (
+                  "The indexing queue did not confirm submission. Check your document library before uploading again.")
+        raise HTTPException(status_code=503, detail=detail) from None
 
     # -----------------------------------------------------
     # RESPONSE
