@@ -101,6 +101,9 @@ class FakeCollection:
         self.updates.append((query, update))
         return SimpleNamespace(matched_count=1, modified_count=1)
 
+    def update_many(self, query, update):
+        return SimpleNamespace(matched_count=0, modified_count=0)
+
     def delete_one(self, query):
         self.deleted_filters.append(query)
         return SimpleNamespace(deleted_count=1 if self.document else 0)

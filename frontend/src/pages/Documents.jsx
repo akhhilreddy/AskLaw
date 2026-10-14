@@ -431,7 +431,9 @@ export default function Documents() {
                     )}
                     {status === "failed" && (
                       <span className="document-status-note error">
-                        Document indexing failed.
+                        {document.failure_code === "processing_lease_expired"
+                          ? "Processing was interrupted. Upload the PDF again."
+                          : "Document indexing failed. Try uploading the PDF again."}
                       </span>
                     )}
                   </div>

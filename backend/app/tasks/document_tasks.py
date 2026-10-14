@@ -1,11 +1,13 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from pymongo import ReturnDocument
 
 from app.core.celery_app import celery_app
 from app.db.mongodb import document_collection
+from app.services.document_lifecycle import PROCESSING_LEASE, failure_code
 
 from app.services.vector_service import (
     NonRetryableEmbeddingError,
@@ -15,6 +17,10 @@ from app.services.vector_service import (
 
 
 logger = logging.getLogger(__name__)
+
+
+class ProcessingLeaseLost(RuntimeError):
+    pass
 
 
 # =========================================================
@@ -56,6 +62,8 @@ def index_document(
     # -----------------------------------------------------
 
     task_id = self.request.id or f"direct:{document_id}"
+    claim_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
 
     document = document_collection.find_one_and_update(
         {
@@ -66,17 +74,24 @@ def index_document(
                 {
                     "status": "processing",
                     "indexing_task_id": task_id,
+                    "processing_claim_id": {"$exists": False},
                 },
                 {
                     "status": "processing",
                     "indexing_task_id": {"$exists": False},
+                    "processing_claim_id": {"$exists": False},
                 },
+                {"status": "processing", "processing_lease_expires_at": {"$lte": now}},
+                {"status": "failed", "failure_code": "processing_lease_expired"},
             ],
         },
         {
             "$set": {
                 "status": "processing",
                 "indexing_task_id": task_id,
+                "processing_claim_id": claim_id,
+                "processing_started_at": now,
+                "processing_lease_expires_at": now + PROCESSING_LEASE,
             }
         },
         return_document=ReturnDocument.AFTER,
@@ -87,6 +102,18 @@ def index_document(
             "success": False,
             "message": "Document not available for indexing",
         }
+
+    claim_filter = {"_id": object_id, "user_id": user_id, "indexing_task_id": task_id,
+                    "processing_claim_id": claim_id, "status": "processing"}
+
+    def heartbeat():
+        current = datetime.now(timezone.utc)
+        result = document_collection.update_one(
+            {**claim_filter, "processing_lease_expires_at": {"$gt": current}},
+            {"$set": {"processing_lease_expires_at": current + PROCESSING_LEASE}},
+        )
+        if not result.matched_count:
+            raise ProcessingLeaseLost("Document processing lease is no longer owned")
 
     # -----------------------------------------------------
     # GET DOCUMENT DATA
@@ -150,29 +177,30 @@ def index_document(
                 }
             )
 
-        indexed_count = store_chunks(indexable_chunks)
+        indexed_count = store_chunks(indexable_chunks, progress_callback=heartbeat)
 
-    except NonRetryableEmbeddingError:
-        logger.exception(
+    except ProcessingLeaseLost:
+        # A stale/redelivered worker must not alter a newer claim's state.
+        logger.warning("Document indexing stopped after losing its processing lease")
+        return {"success": False, "message": "Processing lease lost"}
+
+    except NonRetryableEmbeddingError as exc:
+        logger.error(
             "Document indexing failed with a non-retryable embedding error "
             "for document_id=%s",
             document_id,
         )
         document_collection.update_one(
+            claim_filter,
             {
-                "_id": object_id,
-                "user_id": user_id,
-                "indexing_task_id": task_id,
-            },
-            {
-                "$set": {"status": "failed"},
-                "$unset": {"indexing_task_id": ""},
+                "$set": {"status": "failed", "failure_code": failure_code(exc), "failed_at": datetime.now(timezone.utc)},
+                "$unset": {"indexing_task_id": "", "processing_claim_id": "", "processing_lease_expires_at": ""},
             },
         )
         raise
 
     except Exception as exc:
-        logger.exception(
+        logger.error(
             "Document indexing attempt failed for document_id=%s (attempt %s of %s)",
             document_id,
             self.request.retries + 1,
@@ -180,39 +208,39 @@ def index_document(
         )
 
         if self.request.retries < self.max_retries:
+            document_collection.update_one(claim_filter, {"$unset": {"processing_claim_id": ""}})
             raise self.retry(
                 exc=exc,
                 countdown=5 * (self.request.retries + 1),
             )
 
         document_collection.update_one(
+            claim_filter,
             {
-                "_id": object_id,
-                "user_id": user_id,
-                "indexing_task_id": task_id,
-            },
-            {
-                "$set": {"status": "failed"},
-                "$unset": {"indexing_task_id": ""},
+                "$set": {"status": "failed", "failure_code": failure_code(exc), "failed_at": datetime.now(timezone.utc)},
+                "$unset": {"indexing_task_id": "", "processing_claim_id": "", "processing_lease_expires_at": ""},
             },
         )
         raise
 
-    document_collection.update_one(
-        {
-            "_id": object_id,
-            "user_id": user_id,
-            "indexing_task_id": task_id,
-        },
+    completion = document_collection.update_one(
+        {**claim_filter, "processing_lease_expires_at": {"$gt": datetime.now(timezone.utc)}},
         {
             "$set": {
                 "status": "indexed",
             },
             "$unset": {
                 "indexing_task_id": "",
+                "processing_claim_id": "",
+                "processing_lease_expires_at": "",
+                "failure_code": "",
+                "failed_at": "",
             },
         },
     )
+
+    if not completion.matched_count:
+        return {"success": False, "message": "Processing lease lost"}
 
     logger.info(
         "Document indexing completed for document_id=%s with %s chunks",

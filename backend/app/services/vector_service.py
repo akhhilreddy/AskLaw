@@ -408,7 +408,7 @@ def create_embedding(text: str) -> list[float]:
     return create_embeddings([text])[0]
 
 
-def store_chunks(chunks: Sequence[dict[str, Any]]) -> int:
+def store_chunks(chunks: Sequence[dict[str, Any]], *, progress_callback=None) -> int:
     """Embed and upsert chunks in bounded batches, preserving payload scope."""
 
     valid_chunks = [chunk for chunk in chunks if chunk.get("text")]
@@ -419,6 +419,8 @@ def store_chunks(chunks: Sequence[dict[str, Any]]) -> int:
     stored_count = 0
 
     for start in range(0, len(valid_chunks), batch_size):
+        if progress_callback:
+            progress_callback()
         batch = valid_chunks[start : start + batch_size]
         vectors = create_embeddings([chunk["text"] for chunk in batch])
         points = [
@@ -436,6 +438,8 @@ def store_chunks(chunks: Sequence[dict[str, Any]]) -> int:
             )
             for chunk, vector in zip(batch, vectors, strict=True)
         ]
+        if progress_callback:
+            progress_callback()
         qdrant_client.upsert(
             collection_name=COLLECTION_NAME,
             points=points,

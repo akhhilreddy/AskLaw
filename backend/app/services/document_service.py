@@ -11,6 +11,7 @@ from app.tasks.document_tasks import (
     index_document,
 )
 from app.services.vector_service import delete_document_chunks
+from app.services.document_lifecycle import recover_stale_documents
 
 
 # =========================================================
@@ -81,6 +82,8 @@ def get_owned_document(
     except Exception:
         return None
 
+    recover_stale_documents(document_collection, user_id)
+
     return document_collection.find_one(
         {
             "_id": object_id,
@@ -100,6 +103,7 @@ def get_owned_document(
 def get_user_documents(
     user_id: str,
 ):
+    recover_stale_documents(document_collection, user_id)
     document_collection.update_many(
         {
             "user_id": user_id,
@@ -126,6 +130,7 @@ def get_user_documents(
             "chunk_count": 1,
             "status": 1,
             "uploaded_at": 1,
+            "failure_code": 1,
         },
     ).sort(
         [
@@ -173,6 +178,9 @@ def get_user_documents(
             item["uploaded_at"] = document[
                 "uploaded_at"
             ]
+
+        if document.get("failure_code"):
+            item["failure_code"] = document["failure_code"]
 
         results.append(
             item
