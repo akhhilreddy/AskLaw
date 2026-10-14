@@ -60,6 +60,8 @@ from app.services.web_source_ranker import (
 )
 from app.core.config import settings
 from app.services.research_runtime import deadline_context, rag_pool, ensure_web_ready
+from app.services.research_runtime import remaining_seconds, RagUnavailable
+from app.services.availability import SearchResponse, WebResults, notices
 import time
 
 
@@ -877,7 +879,7 @@ async def retrieve_web(
 
     if not await ensure_web_ready():
         # Do not send search requests after readiness has exhausted its budget.
-        return []
+        return WebResults(notice_types=["web_unavailable"])
 
     targeted_queries = _build_targeted_web_queries(
         query
@@ -904,6 +906,7 @@ async def retrieve_web(
 
     # Combine candidates.
     combined_candidates: list[dict] = []
+    failures = 0
 
     for search_result in search_results:
 
@@ -911,8 +914,12 @@ async def retrieve_web(
             search_result,
             Exception,
         ):
+            failures += 1
             logger.warning("A targeted web search failed: %s", type(search_result).__name__)
             continue
+
+        if isinstance(search_result, SearchResponse) and search_result.unavailable:
+            failures += 1
 
         normalized = _normalize_web_results(
             search_result
@@ -948,7 +955,8 @@ async def retrieve_web(
         len(ranked),
     )
 
-    return ranked
+    notice_types = ["web_unavailable" if failures == len(search_results) else "web_partial"] if failures else []
+    return WebResults(ranked, notice_types)
 
 
 # ============================================================
@@ -1067,17 +1075,27 @@ async def _retrieve_for_query(
             web_limit,
         )
 
-        rag_results, web_results = (
-            await asyncio.gather(
-                rag_task,
-                web_task,
-            )
+        async def branch(awaitable, kind):
+            try:
+                value = await asyncio.wait_for(awaitable, timeout=max(.001, remaining_seconds() - .02))
+                return value, []
+            except TimeoutError:
+                return [], ["rag_timeout" if kind == "rag" else "web_unavailable"]
+            except RagUnavailable:
+                return [], ["rag_busy"]
+            except Exception:
+                logger.warning("Research dependency unavailable (%s)", kind)
+                return [], ["rag_unavailable" if kind == "rag" else "web_unavailable"]
+
+        (rag_results, rag_notices), (web_results, web_notices) = await asyncio.gather(
+            branch(rag_task, "rag"), branch(web_task, "web"),
         )
 
         return {
             "route": "hybrid",
             "rag_results": rag_results,
             "web_results": web_results,
+            "availability_notices": notices(rag_notices + web_notices),
         }
 
     # ========================================================
@@ -1106,10 +1124,26 @@ async def _retrieve_for_query(
 async def retrieve_for_query(query, user_id, document_id=None, rag_limit=5, web_limit=5):
     token = deadline_context.set(time.monotonic() + settings.RESEARCH_DEADLINE_SECONDS)
     try:
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             _retrieve_for_query(query, user_id, document_id, rag_limit, web_limit),
             timeout=settings.RESEARCH_DEADLINE_SECONDS,
         )
+        web = result.get("web_results", [])
+        items = getattr(web, "availability_notices", [])
+        if items:
+            result["availability_notices"] = notices(
+                [item["type"] for item in result.get("availability_notices", []) + items])
+        return result
+    except TimeoutError:
+        return {"route": route_query(query).value, "rag_results": [], "web_results": [],
+                "availability_notices": notices(["research_timeout"])}
+    except RagUnavailable:
+        return {"route": "rag", "rag_results": [], "web_results": [],
+                "availability_notices": notices(["rag_busy"])}
+    except Exception:
+        logger.warning("Document research unavailable")
+        return {"route": "rag", "rag_results": [], "web_results": [],
+                "availability_notices": notices(["rag_unavailable"])}
     finally:
         deadline_context.reset(token)
 

@@ -39,6 +39,7 @@
 import asyncio
 import json
 import logging
+from app.services.availability import NOTICE_MESSAGES, sign_availability
 
 
 from groq import Groq
@@ -322,6 +323,7 @@ def stream_response(
     messages,
     user_id=None,
     document_id=None,
+    conversation_id=None,
 ):
     """
     Complete AskLaw response pipeline.
@@ -427,6 +429,7 @@ def stream_response(
     )
 
     is_conversation = route == "conversation"
+    availability_notices = retrieval_result.get("availability_notices", [])
 
     logger.info(
         "Research retrieval completed route=%s rag_results=%s web_results=%s",
@@ -439,10 +442,16 @@ def stream_response(
         # No evidence exists to ground or verify an AI-generated legal answer.
         # Keep the normal streaming event shape without inventing sources or
         # displaying a meaningless 0% grounding score.
+        unavailable_answer = " ".join(NOTICE_MESSAGES[item["type"]] for item in availability_notices)
+        answer = unavailable_answer or insufficient_evidence_message(route)
         yield json.dumps({
             "type": "token",
-            "content": insufficient_evidence_message(route),
+            "content": answer,
         }) + "\n"
+        if availability_notices:
+            yield json.dumps({"type": "availability", "notices": availability_notices,
+                              "availability_only": True,
+                              "receipt": sign_availability(user_id, conversation_id, answer, availability_notices, availability_only=True)}) + "\n"
         yield json.dumps({
             "type": "route",
             "route": route,
@@ -668,6 +677,10 @@ def stream_response(
     generated_answer = "".join(
         generated_answer_parts
     ).strip()
+    if availability_notices:
+        yield json.dumps({"type": "availability", "notices": availability_notices,
+                          "availability_only": False,
+                          "receipt": sign_availability(user_id, conversation_id, generated_answer, availability_notices)}) + "\n"
 
     # =====================================================
     # CLAIM VERIFICATION

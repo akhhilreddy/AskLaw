@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from app.db.mongodb import conversation_collection
+from app.services.availability import verify_availability
 
 
 # =========================================================
@@ -112,6 +113,9 @@ def get_conversation(
                 "content": message["content"],
             }
         )
+        if message.get("availability_notices"):
+            messages[-1]["availability_notices"] = message["availability_notices"]
+            messages[-1]["availability_only"] = bool(message.get("availability_only"))
 
     return {
         "id": str(conversation["_id"]),
@@ -138,6 +142,7 @@ def add_message(
     user_id: str,
     role: str,
     content: str,
+    availability_receipt=None,
 ):
     try:
         object_id = ObjectId(
@@ -151,6 +156,10 @@ def add_message(
         "role": role,
         "content": content,
     }
+    if availability_receipt is not None:
+        metadata = verify_availability(availability_receipt, user_id, conversation_id, content)
+        if role == "assistant":
+            message.update(metadata)
 
     result = conversation_collection.update_one(
         {
@@ -172,11 +181,14 @@ def add_message(
     if result.matched_count == 0:
         return None
 
-    return {
+    response = {
         "id": str(message["_id"]),
         "role": role,
         "content": content,
     }
+    if message.get("availability_notices"):
+        response.update(availability_notices=message["availability_notices"], availability_only=message["availability_only"])
+    return response
 
 
 # =========================================================

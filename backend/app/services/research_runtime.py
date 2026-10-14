@@ -4,11 +4,26 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
 import threading
 import time
+import logging
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
 from app.core.config import settings
+
+
+class RedactSearchTransportLogs(logging.Filter):
+    def filter(self, record):
+        # HTTPX's INFO records otherwise include the provider URL/query string.
+        args = record.args
+        if isinstance(args, tuple) and len(args) > 1:
+            host = getattr(args[1], "host", None)
+            if host and host == urlsplit(settings.SEARXNG_URL).hostname:
+                return False
+        return True
+
+
+logging.getLogger("httpx").addFilter(RedactSearchTransportLogs())
 
 deadline_context = ContextVar("research_deadline", default=None)
 progress_context = ContextVar("research_progress", default=None)
@@ -87,6 +102,17 @@ class SharedWebReadiness:
                 self.result = result
                 self.ready_at = time.monotonic() if result else None
                 self.url = url
+
+    def record_success(self, url):
+        with self.lock:
+            if self.result and self.url == url:
+                self.ready_at = time.monotonic()
+
+    def invalidate(self, url):
+        with self.lock:
+            if self.url == url:
+                self.result = False
+                self.ready_at = None
 
     async def ensure(self):
         url = settings.SEARXNG_URL

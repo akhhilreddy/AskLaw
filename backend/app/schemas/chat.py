@@ -21,6 +21,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: Annotated[list[ChatMessage], Field(min_length=1, max_length=50)]
     document_id: DocumentId | None = None
+    conversation_id: DocumentId | None = None
 
     @model_validator(mode="after")
     def validate_total_message_size(self):

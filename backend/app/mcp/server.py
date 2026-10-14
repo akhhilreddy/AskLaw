@@ -5,7 +5,8 @@ import httpx
 from mcp.server.mcpserver import MCPServer
 
 from app.core.config import settings
-from app.services.research_runtime import remaining_seconds
+from app.services.research_runtime import remaining_seconds, web_readiness
+from app.services.availability import SearchResponse
 
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,9 @@ async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> 
             async with asyncio.timeout(remaining_seconds()):
                 response = await client.get(url, params=params)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            web_readiness.record_success(url)
+            return data
         except Exception as exc:
             can_retry = (
                 _is_transient_search_error(exc)
@@ -111,21 +114,22 @@ async def search_web(query: str, limit: int = 5) -> dict:
                 }
             )
 
-        return {
+        return SearchResponse({
             "query": query,
             "results": results,
             "count": len(results),
-        }
+        })
 
     except Exception as exc:
+        web_readiness.invalidate(url)
         logger.warning("SearXNG request failed: %s", type(exc).__name__)
 
-        return {
+        return SearchResponse({
             "query": query,
             "results": [],
             "count": 0,
             "error": "Web search is temporarily unavailable",
-        }
+        }, unavailable=True)
 
 
 if __name__ == "__main__":

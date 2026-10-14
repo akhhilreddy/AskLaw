@@ -25,6 +25,7 @@ from app.services.document_service import (
 )
 from app.services.guest_service import consume_guest_question
 from app.core.rate_limit import limit_chat
+from app.services.conversation_service import get_conversation
 
 
 router = APIRouter()
@@ -48,6 +49,9 @@ def chat_stream(
     user_id = str(
         current_user["_id"]
     )
+
+    if request.conversation_id and get_conversation(request.conversation_id, user_id) is None:
+        raise HTTPException(404, "Conversation not found")
 
     if request.document_id:
         document = get_owned_document(
@@ -78,11 +82,12 @@ def chat_stream(
     # -----------------------------------------------------
 
     consume_guest_question(current_user)
+    if request.conversation_id:
+        body = stream_response(request.messages, user_id, request.document_id,
+                               conversation_id=request.conversation_id)
+    else:
+        body = stream_response(request.messages, user_id, request.document_id)
     return StreamingResponse(
-        stream_response(
-            request.messages,
-            user_id,
-            request.document_id,
-        ),
+        body,
         media_type="application/x-ndjson",
     )

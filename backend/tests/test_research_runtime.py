@@ -105,6 +105,6 @@ class RagBoundTests(unittest.TestCase):
             await asyncio.sleep(1)
         with patch.object(settings, "RESEARCH_DEADLINE_SECONDS", .02), patch.object(orchestrator, "_retrieve_for_query", side_effect=slow):
             before = time.monotonic()
-            with self.assertRaises(TimeoutError):
-                asyncio.run(orchestrator.retrieve_for_query("question", "owner"))
+            result = asyncio.run(orchestrator.retrieve_for_query("question", "owner"))
+            self.assertEqual(result["availability_notices"], [{"type": "research_timeout"}])
             self.assertLess(time.monotonic() - before, .2)

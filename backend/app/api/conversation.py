@@ -101,6 +101,7 @@ def create_message(
         get_current_user
     ),
 ):
+    extra = {"availability_receipt": message.availability_receipt} if message.availability_receipt is not None else {}
     saved_message = add_message(
         conversation_id=conversation_id,
         user_id=str(
@@ -108,6 +109,7 @@ def create_message(
         ),
         role=message.role,
         content=message.content,
+        **extra,
     )
 
     if not saved_message:
