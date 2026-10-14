@@ -92,16 +92,18 @@ class SharedWebReadiness:
                     time.sleep(wait)
         return False
 
-    def _finish(self, future, url):
+    def _probe_and_record(self, url, budget):
         try:
-            result = bool(future.result())
+            result = bool(self._probe(url, budget))
         except Exception:
             result = False
         with self.lock:
-            if self.future is future:
-                self.result = result
-                self.ready_at = time.monotonic() if result else None
-                self.url = url
+            # Record BEFORE the Future becomes done, so an immediate probe
+            # cannot race another event loop into launching a duplicate.
+            self.result = result
+            self.ready_at = time.monotonic() if result else None
+            self.url = url
+        return result
 
     def record_success(self, url):
         with self.lock:
@@ -122,10 +124,8 @@ class SharedWebReadiness:
             if self.result and self.url == url and self.ready_at is not None and time.monotonic() - self.ready_at < settings.SEARXNG_IDLE_REPROBE_SECONDS:
                 return True
             if self.future is None or self.future.done():
-                self.future = self.executor.submit(self._probe, url, budget)
+                self.future = self.executor.submit(self._probe_and_record, url, budget)
             future = self.future
-        # Register outside the lock: add_done_callback may run synchronously.
-        future.add_done_callback(lambda done: self._finish(done, url))
         wrapped = asyncio.wrap_future(future)
         try:
             await asyncio.wait_for(asyncio.shield(wrapped), timeout=min(.25, budget))

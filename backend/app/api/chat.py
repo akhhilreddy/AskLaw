@@ -26,6 +26,25 @@ from app.services.document_service import (
 from app.services.guest_service import consume_guest_question
 from app.core.rate_limit import limit_chat
 from app.services.conversation_service import get_conversation
+import anyio
+from starlette.concurrency import run_in_threadpool
+
+
+class ClosingStreamingResponse(StreamingResponse):
+    def __init__(self, body, **kwargs):
+        self.iterator = body
+        super().__init__(body, **kwargs)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # Closing the sync generator cancels its retrieval task promptly.
+            # Run this off the ASGI loop, and shield cleanup from disconnect.
+            with anyio.CancelScope(shield=True):
+                close = getattr(self.iterator, "close", None)
+                if close:
+                    await run_in_threadpool(close)
 
 
 router = APIRouter()
@@ -87,7 +106,7 @@ def chat_stream(
                                conversation_id=request.conversation_id)
     else:
         body = stream_response(request.messages, user_id, request.document_id)
-    return StreamingResponse(
+    return ClosingStreamingResponse(
         body,
         media_type="application/x-ndjson",
     )

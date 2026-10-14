@@ -40,6 +40,7 @@ import asyncio
 import json
 import logging
 from app.services.availability import NOTICE_MESSAGES, sign_availability
+from app.services.retrieval_events import retrieval_events
 
 
 from groq import Groq
@@ -380,15 +381,13 @@ def stream_response(
 
     try:
 
-        retrieval_result = (
-            asyncio.run(
-                retrieve_for_query(
-                    query=user_message,
-                    user_id=user_id,
-                    document_id=document_id,
-                )
-            )
-        )
+        for event in retrieval_events(retrieve_for_query(
+            query=user_message, user_id=user_id, document_id=document_id,
+        )):
+            if event["type"] == "retrieval_result":
+                retrieval_result = event["result"]
+            else:
+                yield json.dumps(event) + "\n"
 
     except Exception as exc:
         logger.exception("Research retrieval failed")
@@ -430,6 +429,11 @@ def stream_response(
 
     is_conversation = route == "conversation"
     availability_notices = retrieval_result.get("availability_notices", [])
+    if availability_notices:
+        # Early display only. A bound receipt is emitted after answer text is known.
+        yield json.dumps({"type": "availability", "notices": availability_notices,
+                          "availability_only": not rag_results and not web_results,
+                          "receipt": None}) + "\n"
 
     logger.info(
         "Research retrieval completed route=%s rag_results=%s web_results=%s",

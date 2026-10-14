@@ -13,6 +13,7 @@ import {
 import CodeBlock from "./CodeBlock";
 import MessageActions from "./MessageActions";
 import { isResearchRoute } from "./chatPresentation";
+import { noticeText } from "./researchStatus";
 
 const routeLabels = {
   rag: "Document Research",
@@ -185,6 +186,7 @@ export default function ChatMessage({ message }) {
   const isUser = message.role === "user";
   const route = message.route?.toLowerCase();
   const hasResearchRoute = isResearchRoute(route);
+  const notices = (message.availability_notices || []).filter(item => noticeText(item));
   const RouteIcon =
     route === "web" ? Globe2 : route === "hybrid" ? Layers3 : BookOpen;
 
@@ -206,7 +208,10 @@ export default function ChatMessage({ message }) {
               </span>
             )}
           </div>
-          {message.content ? (
+          {notices.length > 0 && <div className="availability-notice" role="status">
+            {notices.map(item => <p key={item.type}>{noticeText(item)}</p>)}
+          </div>}
+          {message.availability_only ? null : message.content ? (
             <div className="answer-body">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -228,13 +233,14 @@ export default function ChatMessage({ message }) {
             </div>
           ) : (
             <div className="streaming-line">
-              <span className="pulse-dot" /> Generating answer…
+              <span className="pulse-dot" /> {message.progress || "Generating answer…"}
             </div>
           )}
           {message.sources?.length > 0 ? (
             <Sources sources={message.sources} route={route} />
           ) : (
             message.isComplete &&
+            notices.length === 0 &&
             hasResearchRoute && (
               <p className="no-sources">No supporting sources were returned.</p>
             )

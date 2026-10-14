@@ -39,6 +39,8 @@ async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> 
                 response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
+            if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+                raise ValueError("Invalid search response")
             web_readiness.record_success(url)
             return data
         except Exception as exc:

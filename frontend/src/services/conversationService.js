@@ -41,13 +41,15 @@ export const getConversation = async (
 export const addMessage = async (
   conversationId,
   role,
-  content
+  content,
+  availabilityReceipt = null,
 ) => {
   const response = await api.post(
     `/conversations/${conversationId}/messages`,
     {
       role,
       content,
+      ...(availabilityReceipt ? { availability_receipt: availabilityReceipt } : {}),
     }
   );
 

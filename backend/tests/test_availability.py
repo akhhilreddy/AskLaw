@@ -89,6 +89,19 @@ class ReceiptTests(unittest.TestCase):
 
 
 class DependencyTests(unittest.TestCase):
+    def test_receipt_conversation_binding_requires_owning_user_in_chat_endpoint(self):
+        from app.api import chat
+        from app.schemas.chat import ChatRequest
+        from fastapi import HTTPException
+        identifier = str(ObjectId())
+        request = ChatRequest(messages=[{"role": "user", "content": "research"}], conversation_id=identifier)
+        with patch.object(chat, "get_conversation", return_value=None) as owned, patch.object(chat, "stream_response") as stream:
+            with self.assertRaises(HTTPException) as failure:
+                chat.chat_stream(request, {"_id": "owner"})
+        self.assertEqual(failure.exception.status_code, 404)
+        owned.assert_called_once_with(identifier, "owner")
+        stream.assert_not_called()
+
     def test_outage_and_empty_results_are_distinct_and_content_cannot_forge_status(self):
         with patch.object(orchestrator, "ensure_web_ready", new=AsyncMock(return_value=True)):
             for response, expected in [
@@ -123,8 +136,21 @@ class DependencyTests(unittest.TestCase):
     def test_outage_answer_has_no_claim_verification_or_provider_call(self):
         with patch.object(ai_service, "retrieve_for_query", new=AsyncMock(return_value={"route": "web", "rag_results": [], "web_results": [], "availability_notices": [{"type": "web_unavailable"}]})), patch.object(ai_service, "client") as provider:
             events = [json.loads(event) for event in ai_service.stream_response([ChatMessage(role="user", content="what is law?")], "owner", conversation_id="conversation")]
-        self.assertIn("temporarily unavailable", events[0]["content"])
+        answer = next(event["content"] for event in events if event["type"] == "token")
+        self.assertIn("temporarily unavailable", answer)
         self.assertFalse(any(event["type"] == "verification" for event in events))
-        status = next(event for event in events if event["type"] == "availability")
-        self.assertTrue(availability.verify_availability(status["receipt"], "owner", "conversation", events[0]["content"])["availability_only"])
+        status = [event for event in events if event["type"] == "availability"][-1]
+        self.assertTrue(availability.verify_availability(status["receipt"], "owner", "conversation", answer)["availability_only"])
         provider.chat.completions.create.assert_not_called()
+
+    def test_notices_are_not_evidence_prompt_or_verified_claims(self):
+        chunk = SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="Supported document answer"))])
+        provider = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=Mock(return_value=[chunk]))))
+        items = [{"type": "web_unavailable"}]
+        with patch.object(ai_service, "retrieve_for_query", new=AsyncMock(return_value={"route": "hybrid", "rag_results": [{"text": "document evidence"}], "web_results": [], "availability_notices": items})), patch.object(ai_service, "client", provider), patch.object(ai_service, "build_evidence_bundle", return_value={"evidence": []}) as bundle, patch.object(ai_service, "build_legal_prompt", return_value="grounded prompt") as prompt, patch.object(ai_service, "verify_claims", return_value={"claims": [], "summary": {"total_claims": 0}}) as verify:
+            events = list(ai_service.stream_response([ChatMessage(role="user", content="research question")], "owner"))
+        self.assertTrue(events)
+        self.assertNotIn("availability_notices", bundle.call_args.kwargs)
+        self.assertNotIn("availability_notices", prompt.call_args.kwargs)
+        self.assertNotIn("temporarily unavailable", str(provider.chat.completions.create.call_args))
+        self.assertNotIn("temporarily unavailable", str(verify.call_args))

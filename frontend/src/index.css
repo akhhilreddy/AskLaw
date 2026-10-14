@@ -1103,6 +1103,8 @@ button:disabled,
 }
 
 .guest-entry { margin-top: 1rem; }
+.availability-notice { margin: .75rem 0; padding: .75rem 1rem; border-left: 3px solid #a58140; background: #fff7e8; color: #65502e; overflow-wrap: anywhere; font-size: .9rem; }
+.availability-notice p { margin: .25rem 0; }
 .guest-button { width: 100%; min-height: 44px; padding: .75rem; border: 1px solid #cbd5df; border-radius: 10px; background: transparent; color: #1b2e42; font: inherit; cursor: pointer; }
 .guest-button:disabled { opacity: .65; cursor: wait; }
 .guest-button:focus-visible, .server-readiness button:focus-visible { outline: 3px solid #a58140; outline-offset: 3px; }

@@ -15,6 +15,15 @@ from app.services import research_runtime as runtime, retrieval_orchestrator as 
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_immediate_probe_is_not_duplicated_across_event_loops(self):
+        state = runtime.SharedWebReadiness()
+        try:
+            with patch.object(state, "_probe", return_value=True) as probe, ThreadPoolExecutor(max_workers=8) as callers:
+                outcomes = list(callers.map(lambda _: asyncio.run(state.ensure()), range(20)))
+            self.assertTrue(all(outcomes))
+            self.assertEqual(probe.call_count, 1)
+        finally:
+            state.executor.shutdown(wait=True)
     def test_two_event_loops_share_one_probe(self):
         state = runtime.SharedWebReadiness()
         started = threading.Event()
