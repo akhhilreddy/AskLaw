@@ -6,9 +6,16 @@ from qdrant_client.models import (
     Filter,
     FieldCondition,
     MatchValue,
+    MatchAny,
 )
 
 from app.core.config import settings
+from app.db.mongodb import document_collection
+from app.services.document_lifecycle import get_ready_document_ids as _get_ready_document_ids
+
+
+def ready_document_ids(user_id, document_id=None):
+    return _get_ready_document_ids(document_collection, user_id, document_id)
 
 from app.services.vector_service import (
     COLLECTION_NAME,
@@ -454,6 +461,10 @@ def find_exact_article(
     if not user_id:
         return []
 
+    ready_ids = ready_document_ids(user_id, document_id)
+    if not ready_ids:
+        return []
+
     # ========================================================
     # USER FILTER
     # ========================================================
@@ -477,6 +488,7 @@ def find_exact_article(
             )
         )
 
+    scope_conditions.append(FieldCondition(key="document_id", match=MatchAny(any=ready_ids)))
     query_filter = Filter(
         must=scope_conditions
     )
@@ -656,6 +668,10 @@ def semantic_search(
     document_id=None,
 ):
 
+    ready_ids = ready_document_ids(user_id, document_id)
+    if not ready_ids:
+        return []
+
     query_vector = create_embedding(
         query
     )
@@ -679,10 +695,7 @@ def semantic_search(
             )
         )
 
-    query_filter = Filter(
-        must=scope_conditions
-    )
-
+    scope_conditions.append(FieldCondition(key="document_id", match=MatchAny(any=ready_ids)))
     response = (
         qdrant_client.query_points(
 
@@ -690,7 +703,7 @@ def semantic_search(
 
             query=query_vector,
 
-            query_filter=query_filter,
+            query_filter=Filter(must=scope_conditions),
 
             limit=limit,
 

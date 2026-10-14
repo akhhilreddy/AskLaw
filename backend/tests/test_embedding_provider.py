@@ -409,7 +409,7 @@ class BatchIndexingAndRetrievalTests(unittest.TestCase):
             retrieval_service,
             "create_embedding",
             side_effect=vector_service.create_embedding,
-        ), patch.object(retrieval_service, "qdrant_client", client):
+        ), patch.object(retrieval_service, "qdrant_client", client), patch.object(retrieval_service, "ready_document_ids", return_value=["doc-1"]):
             retrieval_service.semantic_search(
                 "What powers does Article 32 provide?",
                 "user-1",
@@ -423,7 +423,7 @@ class BatchIndexingAndRetrievalTests(unittest.TestCase):
         query = client.query_points.call_args.kwargs
         self.assertEqual(query["collection_name"], vector_service.COLLECTION_NAME)
         self.assertEqual(
-            {(condition.key, condition.match.value) for condition in query["query_filter"].must},
+            {(condition.key, condition.match.value) for condition in query["query_filter"].must if hasattr(condition.match, "value")},
             {("user_id", "user-1"), ("document_id", "doc-1")},
         )
 

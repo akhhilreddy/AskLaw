@@ -11,7 +11,7 @@ from app.tasks.document_tasks import (
     index_document,
 )
 from app.services.vector_service import delete_document_chunks
-from app.services.document_lifecycle import recover_stale_documents
+from app.services.document_lifecycle import recover_stale_documents, cleanup_failed_document
 
 
 # =========================================================
@@ -84,7 +84,7 @@ def get_owned_document(
 
     recover_stale_documents(document_collection, user_id)
 
-    return document_collection.find_one(
+    record = document_collection.find_one(
         {
             "_id": object_id,
             "user_id": user_id,
@@ -92,8 +92,12 @@ def get_owned_document(
         {
             "filename": 1,
             "status": 1,
+            "vector_cleanup_pending": 1,
         },
     )
+    if record:
+        cleanup_failed_document(document_collection, record, user_id, delete_document_chunks)
+    return record
 
 
 # =========================================================
@@ -131,6 +135,7 @@ def get_user_documents(
             "status": 1,
             "uploaded_at": 1,
             "failure_code": 1,
+            "vector_cleanup_pending": 1,
         },
     ).sort(
         [
@@ -142,6 +147,7 @@ def get_user_documents(
     results = []
 
     for document in documents:
+        cleanup_failed_document(document_collection, document, user_id, delete_document_chunks)
         content = document.get(
             "content",
             "",
@@ -206,6 +212,8 @@ def delete_owned_document(
         object_id = ObjectId(document_id)
     except Exception:
         return None
+
+    recover_stale_documents(document_collection, user_id)
 
     document = document_collection.find_one(
         {

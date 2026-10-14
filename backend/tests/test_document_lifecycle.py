@@ -9,11 +9,62 @@ os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "15")
 os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "7")
 from bson import ObjectId
-from app.services import document_lifecycle
+from app.services import document_lifecycle, retrieval_service
 from app.tasks import document_tasks
 
 
 class DocumentLeaseTests(unittest.TestCase):
+    def test_readiness_query_requires_owner_and_ready_status(self):
+        collection = Mock()
+        identifier = ObjectId()
+        collection.find.return_value = [{"_id": identifier}]
+        ids = document_lifecycle.get_ready_document_ids(collection, "owner", str(identifier))
+        self.assertEqual(ids, [str(identifier)])
+        query = collection.find.call_args.args[0]
+        self.assertEqual(query["user_id"], "owner")
+        self.assertEqual(query["_id"], identifier)
+        self.assertEqual(query["status"], {"$in": ["indexed", "ready"]})
+
+    def test_no_ready_documents_skip_qdrant_and_embedding(self):
+        with patch.object(retrieval_service, "ready_document_ids", return_value=[]), patch.object(retrieval_service, "qdrant_client") as qdrant, patch.object(retrieval_service, "create_embedding") as embed:
+            self.assertEqual(retrieval_service.semantic_search("law", "owner", 5), [])
+            self.assertEqual(retrieval_service.find_exact_article("32", "owner"), [])
+        qdrant.query_points.assert_not_called()
+        qdrant.scroll.assert_not_called()
+        embed.assert_not_called()
+
+    def test_qdrant_query_includes_ready_document_allowlist(self):
+        client = Mock()
+        client.query_points.return_value = SimpleNamespace(points=[])
+        with patch.object(retrieval_service, "ready_document_ids", return_value=["ready-doc"]), patch.object(retrieval_service, "qdrant_client", client), patch.object(retrieval_service, "create_embedding", return_value=[.1]):
+            retrieval_service.semantic_search("law", "owner", 5)
+        conditions = client.query_points.call_args.kwargs["query_filter"].must
+        self.assertTrue(any(getattr(condition.match, "any", None) == ["ready-doc"] for condition in conditions))
+        self.assertTrue(any(getattr(condition.match, "value", None) == "owner" for condition in conditions))
+
+    def test_cleanup_failure_keeps_failed_document_hidden_and_retryable(self):
+        record = {"_id": ObjectId(), "status": "failed", "vector_cleanup_pending": True}
+        collection = Mock()
+        cleanup = Mock(side_effect=RuntimeError("private-url"))
+        with self.assertLogs("app.services.document_lifecycle", "WARNING") as logs:
+            document_lifecycle.cleanup_failed_document(collection, record, "owner", cleanup)
+        collection.update_one.assert_not_called()
+        self.assertNotIn("private-url", str(logs.output))
+        cleanup.side_effect = None
+        document_lifecycle.cleanup_failed_document(collection, record, "owner", cleanup)
+        self.assertFalse(collection.update_one.call_args.args[1]["$set"]["vector_cleanup_pending"])
+
+    def test_terminal_failure_deletes_partial_vectors_with_owner_scope(self):
+        record = {"_id": ObjectId(), "filename": "law.pdf", "chunks": []}
+        collection = Mock()
+        collection.find_one_and_update.return_value = record
+        collection.update_one.return_value = SimpleNamespace(matched_count=1)
+        from app.services.vector_service import NonRetryableEmbeddingError
+        with patch.object(document_tasks, "document_collection", collection), patch.object(document_tasks, "create_collection"), patch.object(document_tasks, "store_chunks", side_effect=NonRetryableEmbeddingError("quota")), patch.object(document_tasks, "delete_document_chunks") as cleanup:
+            with self.assertRaises(NonRetryableEmbeddingError):
+                document_tasks.index_document.run(str(record["_id"]), "owner")
+        cleanup.assert_called_once_with(document_id=str(record["_id"]), user_id="owner")
+
     def test_stale_recovery_is_user_scoped_and_persists_sanitized_code(self):
         collection = Mock()
         document_lifecycle.recover_stale_documents(collection, "owner")

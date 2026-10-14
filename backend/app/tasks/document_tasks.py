@@ -13,6 +13,7 @@ from app.services.vector_service import (
     NonRetryableEmbeddingError,
     create_collection,
     store_chunks,
+    delete_document_chunks,
 )
 
 
@@ -82,7 +83,7 @@ def index_document(
                     "processing_claim_id": {"$exists": False},
                 },
                 {"status": "processing", "processing_lease_expires_at": {"$lte": now}},
-                {"status": "failed", "failure_code": "processing_lease_expired"},
+                {"status": "failed", "failure_code": "processing_lease_expired", "vector_cleanup_pending": False},
             ],
         },
         {
@@ -114,6 +115,18 @@ def index_document(
         )
         if not result.matched_count:
             raise ProcessingLeaseLost("Document processing lease is no longer owned")
+
+    def terminal_failure(exc):
+        result = document_collection.update_one(claim_filter, {
+            "$set": {"status": "failed", "failure_code": failure_code(exc),
+                     "failed_at": datetime.now(timezone.utc), "vector_cleanup_pending": True},
+            "$unset": {"indexing_task_id": "", "processing_claim_id": "", "processing_lease_expires_at": ""},
+        })
+        if not result.matched_count:
+            return
+        from app.services.document_lifecycle import cleanup_failed_document
+        cleanup_failed_document(document_collection, {"_id": object_id, "status": "failed", "vector_cleanup_pending": True},
+                                user_id, delete_document_chunks)
 
     # -----------------------------------------------------
     # GET DOCUMENT DATA
@@ -190,13 +203,7 @@ def index_document(
             "for document_id=%s",
             document_id,
         )
-        document_collection.update_one(
-            claim_filter,
-            {
-                "$set": {"status": "failed", "failure_code": failure_code(exc), "failed_at": datetime.now(timezone.utc)},
-                "$unset": {"indexing_task_id": "", "processing_claim_id": "", "processing_lease_expires_at": ""},
-            },
-        )
+        terminal_failure(exc)
         raise
 
     except Exception as exc:
@@ -214,13 +221,7 @@ def index_document(
                 countdown=5 * (self.request.retries + 1),
             )
 
-        document_collection.update_one(
-            claim_filter,
-            {
-                "$set": {"status": "failed", "failure_code": failure_code(exc), "failed_at": datetime.now(timezone.utc)},
-                "$unset": {"indexing_task_id": "", "processing_claim_id": "", "processing_lease_expires_at": ""},
-            },
-        )
+        terminal_failure(exc)
         raise
 
     completion = document_collection.update_one(

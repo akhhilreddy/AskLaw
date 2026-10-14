@@ -361,6 +361,11 @@ class DocumentServiceTests(unittest.TestCase):
 
 
 class QdrantIsolationTests(unittest.TestCase):
+    def setUp(self):
+        ready = patch.object(retrieval_service, "ready_document_ids", return_value=["doc-1"])
+        ready.start()
+        self.addCleanup(ready.stop)
+
     def test_delete_filter_contains_user_and_document(self):
         captured = {}
         fake_client = Mock()
@@ -374,7 +379,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["points_selector"].filter.must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("document_id", "doc-1"), ("user_id", "user-1")},
         )
         self.assertTrue(captured["wait"])
@@ -398,7 +403,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["query_filter"].must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("document_id", "doc-1"), ("user_id", "user-1")},
         )
 
@@ -416,7 +421,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["query_filter"].must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("user_id", "user-1")},
         )
 
@@ -451,7 +456,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["scroll_filter"].must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("document_id", "doc-1"), ("user_id", "user-1")},
         )
         self.assertEqual(len(results), 1)
@@ -460,6 +465,9 @@ class QdrantIsolationTests(unittest.TestCase):
 
 class IndexingLifecycleTests(unittest.TestCase):
     def setUp(self):
+        cleanup = patch.object(document_tasks, "delete_document_chunks")
+        cleanup.start()
+        self.addCleanup(cleanup.stop)
         self.document_id = str(ObjectId())
         self.document = {
             "_id": ObjectId(self.document_id),
@@ -477,7 +485,7 @@ class IndexingLifecycleTests(unittest.TestCase):
         ), patch.object(document_tasks, "store_chunks", store):
             result = document_tasks.index_document.run(self.document_id, "user-1")
 
-        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        statuses = [update["$set"]["status"] for _, update in collection.updates if "status" in update.get("$set", {})]
         self.assertEqual(statuses, ["processing", "indexed"])
         self.assertEqual(result["chunks_indexed"], 1)
         stored_chunks = store.call_args.args[0]
@@ -499,7 +507,7 @@ class IndexingLifecycleTests(unittest.TestCase):
         finally:
             document_tasks.index_document.max_retries = old_max_retries
 
-        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        statuses = [update["$set"]["status"] for _, update in collection.updates if "status" in update.get("$set", {})]
         self.assertEqual(statuses, ["processing", "failed"])
 
     def test_non_retryable_embedding_failure_skips_task_retry(self):
@@ -517,7 +525,7 @@ class IndexingLifecycleTests(unittest.TestCase):
             with self.assertRaises(vector_service.NonRetryableEmbeddingError):
                 document_tasks.index_document.run(self.document_id, "user-1")
 
-        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        statuses = [update["$set"]["status"] for _, update in collection.updates if "status" in update.get("$set", {})]
         self.assertEqual(statuses, ["processing", "failed"])
         retry.assert_not_called()
 
