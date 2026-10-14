@@ -38,8 +38,8 @@ class FakeGeminiModels:
         self.effects = list(effects or [])
         self.calls = []
 
-    def embed_content(self, *, model, contents):
-        self.calls.append({"model": model, "contents": contents})
+    def embed_content(self, *, model, contents, config=None):
+        self.calls.append({"model": model, "contents": contents, "config": config})
         if self.effects:
             effect = self.effects.pop(0)
             if isinstance(effect, Exception):
@@ -58,6 +58,33 @@ class FakeGeminiModels:
 
 
 class EmbeddingProviderTests(unittest.TestCase):
+    def test_gemini_sdk_timeout_and_hidden_retries_disabled(self):
+        models = FakeGeminiModels()
+        provider = vector_service.GeminiEmbeddingProvider("test-key", client=SimpleNamespace(models=models))
+        provider.embed(["Article 32"])
+        options = models.calls[0]["config"].http_options
+        self.assertLessEqual(options.timeout, 30000)
+        self.assertEqual(options.retry_options.attempts, 1)
+
+    def test_gemini_server_retry_wait_is_capped(self):
+        error = ClientError(429, {"error": {"details": [{"retryDelay": "3600s"}]}})
+        models = FakeGeminiModels([error])
+        sleeper = Mock()
+        provider = vector_service.GeminiEmbeddingProvider("test-key", client=SimpleNamespace(models=models), sleeper=sleeper)
+        provider.embed(["Article 32"])
+        sleeper.assert_called_once_with(15.0)
+
+    def test_gemini_operation_deadline_stops_retry_and_shrinks_timeout(self):
+        models = FakeGeminiModels([ServerError(503, {"message": "temporary"})])
+        sleeper = Mock()
+        clock = Mock(side_effect=[0, 115, 119])
+        provider = vector_service.GeminiEmbeddingProvider("test-key", client=SimpleNamespace(models=models),
+                                                         sleeper=sleeper, clock=clock)
+        with self.assertRaisesRegex(TimeoutError, "deadline"):
+            provider.embed(["Article 32"])
+        self.assertEqual(models.calls[0]["config"].http_options.timeout, 5000)
+        sleeper.assert_not_called()
+
     def test_local_qdrant_allows_empty_api_key(self):
         local_settings = Settings(
             SECRET_KEY="test-secret-key",

@@ -27,6 +27,9 @@ GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
 GEMINI_EMBEDDING_DIMENSION = 3072
 LOCAL_INDEXING_BATCH_SIZE = 64
 GEMINI_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+GEMINI_REQUEST_TIMEOUT_SECONDS = 30.0
+GEMINI_OPERATION_DEADLINE_SECONDS = 120.0
+GEMINI_MAX_RETRY_WAIT_SECONDS = 15.0
 
 
 qdrant_client = QdrantClient(
@@ -209,6 +212,7 @@ class GeminiEmbeddingProvider:
         sleeper: Callable[[float], None] = time.sleep,
         max_attempts: int = 5,
         retry_base_seconds: float = 1.0,
+        clock: Callable[[], float] = time.monotonic,
     ):
         if not api_key.strip():
             raise NonRetryableEmbeddingError(
@@ -220,12 +224,17 @@ class GeminiEmbeddingProvider:
         if client is None:
             from google import genai
 
-            client = genai.Client(api_key=api_key)
+            from google.genai import types
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(
+                timeout=int(GEMINI_REQUEST_TIMEOUT_SECONDS * 1000),
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ))
 
         self._client = client
         self._sleeper = sleeper
         self._max_attempts = max_attempts
         self._retry_base_seconds = retry_base_seconds
+        self._clock = clock
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
@@ -238,12 +247,22 @@ class GeminiEmbeddingProvider:
             for text in texts
         ]
 
+        deadline = self._clock() + GEMINI_OPERATION_DEADLINE_SECONDS
         for attempt in range(1, self._max_attempts + 1):
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                raise TimeoutError("Gemini embedding operation deadline exceeded")
             try:
                 response = self._client.models.embed_content(
                     model=GEMINI_EMBEDDING_MODEL,
                     contents=contents,
+                    config=types.EmbedContentConfig(http_options=types.HttpOptions(
+                        timeout=max(1, int(min(GEMINI_REQUEST_TIMEOUT_SECONDS, remaining) * 1000)),
+                        retry_options=types.HttpRetryOptions(attempts=1),
+                    )),
                 )
+                if self._clock() >= deadline:
+                    raise TimeoutError("Gemini embedding operation deadline exceeded")
                 embeddings = response.embeddings or []
                 vectors = [embedding.values or [] for embedding in embeddings]
                 return _validate_embeddings(
@@ -277,9 +296,11 @@ class GeminiEmbeddingProvider:
                 fallback_seconds = (
                     self._retry_base_seconds * (2 ** (attempt - 1))
                 )
-                self._sleeper(
-                    _gemini_retry_delay_seconds(exc, fallback_seconds)
-                )
+                wait = min(GEMINI_MAX_RETRY_WAIT_SECONDS,
+                           _gemini_retry_delay_seconds(exc, fallback_seconds))
+                if self._clock() + wait >= deadline:
+                    raise TimeoutError("Gemini embedding operation deadline exceeded") from None
+                self._sleeper(wait)
 
         raise NonRetryableEmbeddingError("Gemini embedding request failed")
 
