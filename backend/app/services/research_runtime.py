@@ -77,18 +77,28 @@ class SharedWebReadiness:
         self.result = False
 
     def _probe(self, url, budget):
+        # This loop belongs only to the shared probe thread. State shared with
+        # callers remains protected by threading.Lock, never asyncio locks.
+        return asyncio.run(self._probe_async(url, budget))
+
+    async def _probe_async(self, url, budget):
         started = time.monotonic()
         end = started + budget
         attempt = 0
         parts = urlsplit(url)
         health_url = urlunsplit((parts.scheme, parts.netloc, "/healthz", "", ""))
-        # Sync worker is shared across callers/event loops, not asyncio locks.
-        with httpx.Client(follow_redirects=False) as client:
+        async with httpx.AsyncClient(follow_redirects=False) as client:
             while time.monotonic() < end:
                 attempt += 1
                 status = "http_error"
                 try:
-                    response = client.get(health_url, timeout=min(5, max(.001, end - time.monotonic())))
+                    remaining = end - time.monotonic()
+                    timeout = httpx.Timeout(remaining, connect=min(5, remaining))
+                    # HTTPX limits individual network phases; wait_for bounds
+                    # the entire attempt, including reading the response body.
+                    response = await asyncio.wait_for(
+                        client.get(health_url, timeout=timeout), timeout=remaining,
+                    )
                     if response.status_code == 200 and time.monotonic() < end:
                         logger.info("web_readiness attempt=%d elapsed_seconds=%.3f status=ok",
                                     attempt, time.monotonic() - started)
@@ -96,7 +106,7 @@ class SharedWebReadiness:
                     status = "502" if response.status_code == 502 else "http_error"
                     if response.status_code == 200:
                         status = "timeout"
-                except httpx.TimeoutException:
+                except (TimeoutError, httpx.TimeoutException):
                     status = "timeout"
                 except httpx.NetworkError:
                     status = "connection_error"
@@ -106,7 +116,7 @@ class SharedWebReadiness:
                             attempt, time.monotonic() - started, status)
                 wait = min(1, max(0, end - time.monotonic()))
                 if wait:
-                    time.sleep(wait)
+                    await asyncio.sleep(wait)
         return False
 
     def _probe_and_record(self, url, budget):
@@ -139,8 +149,12 @@ class SharedWebReadiness:
     async def ensure(self):
         started = time.monotonic()
         url = settings.SEARXNG_URL
-        budget = min(settings.SEARXNG_READINESS_BUDGET_SECONDS, remaining_seconds())
-        waiter_end = time.monotonic() + budget
+        # Each web phase starts its own readiness window, including a WEB
+        # fallback after RAG. The original research deadline is never reset.
+        readiness_end = started + settings.SEARXNG_READINESS_BUDGET_SECONDS
+        overall_end = deadline_context.get()
+        waiter_end = min(readiness_end, overall_end) if overall_end is not None else readiness_end
+        budget = max(0, waiter_end - time.monotonic())
         with self.lock:
             if self.result and self.url == url and self.ready_at is not None and time.monotonic() - self.ready_at < settings.SEARXNG_IDLE_REPROBE_SECONDS:
                 return True
