@@ -14,6 +14,17 @@ from app.tasks import document_tasks
 
 
 class DocumentLeaseTests(unittest.TestCase):
+    def test_upload_default_limits_are_demo_sized_and_configurable(self):
+        from app.core.config import Settings
+        from unittest.mock import patch
+        with patch.dict(os.environ, {}, clear=True):
+            configured = Settings(SECRET_KEY="test-secret", ALGORITHM="HS256", ACCESS_TOKEN_EXPIRE_MINUTES=15,
+                                  REFRESH_TOKEN_EXPIRE_DAYS=7, _env_file=None)
+        self.assertEqual(configured.MAX_DOCUMENT_UPLOAD_BYTES, 5 * 1024 * 1024)
+        self.assertEqual(configured.MAX_DOCUMENT_PAGES, 50)
+        self.assertEqual(Settings.model_fields["MAX_DOCUMENT_UPLOAD_BYTES"].default, 5242880)
+        self.assertEqual(Settings.model_fields["MAX_DOCUMENT_PAGES"].default, 50)
+
     def test_readiness_query_requires_owner_and_ready_status(self):
         collection = Mock()
         identifier = ObjectId()
