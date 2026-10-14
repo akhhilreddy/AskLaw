@@ -739,6 +739,72 @@ def _deduplicate_web_results(
     return deduplicated
 
 
+WEB_QUERY_FILLER = {
+    "a", "an", "and", "are", "as", "at", "by", "does", "for", "from",
+    "how", "in", "is", "of", "on", "or", "the", "to", "was", "were",
+    "what", "when", "where", "which", "who", "why", "with",
+}
+
+WEB_EVENT_FILLER = {
+    "current", "latest", "new", "recent", "today", "judgment", "judgments",
+    "judgement", "judgements", "ruling", "rulings", "decision",
+    "decisions", "order", "orders", "supreme", "court",
+}
+
+WEB_LEGAL_EVENT_TERMS = re.compile(
+    r"\b(?:judg(?:e)?ments?|rulings?|decisions?|orders?|held|ruled|cases?|insc)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _has_web_topic_match(query: str, result: dict) -> bool:
+    """Reject search-engine results with no evidence of the queried topic.
+
+    Search engines sometimes return successful responses for an unrelated
+    query. A ranking score alone cannot turn those pages into evidence.
+    """
+
+    query_tokens = set(re.findall(r"[a-z0-9]+", query.casefold()))
+    topic_tokens = query_tokens - WEB_QUERY_FILLER
+    if _wants_current_legal_event(query):
+        specific_tokens = {
+            token for token in topic_tokens - WEB_EVENT_FILLER
+            if not re.fullmatch(r"20\d{2}", token)
+        }
+        if specific_tokens:
+            topic_tokens = specific_tokens
+
+    if not topic_tokens:
+        return False
+
+    title = str(result.get("title") or "")
+    content = str(result.get("content") or "")
+    source_tokens = set(re.findall(r"[a-z0-9]+", f"{title} {content}".casefold()))
+
+    # One substantive term is enough for short questions, while longer
+    # questions need more than an incidental single-word overlap.
+    required_matches = 1 if len(topic_tokens) <= 2 else 2
+    if len(topic_tokens & source_tokens) < required_matches:
+        return False
+
+    asks_for_decision = bool(re.search(
+        r"\b(?:judg(?:e)?ments?|rulings?|decisions?|orders?|verdicts?|cases?)\b",
+        query,
+        flags=re.IGNORECASE,
+    ))
+
+    if _wants_current_legal_event(query):
+        source_text = f"{title} {content}".casefold()
+        if asks_for_decision and not WEB_LEGAL_EVENT_TERMS.search(source_text):
+            return False
+        if re.search(r"\bsupreme\s+court\b", query, flags=re.IGNORECASE) and (
+            "supreme court" not in source_text
+        ):
+            return False
+
+    return True
+
+
 # ============================================================
 # RAG RETRIEVAL
 # ============================================================
@@ -849,22 +915,29 @@ async def retrieve_web(
             normalized
         )
 
-    # Deduplicate.
+    # Deduplicate and discard unrelated search-engine results before ranking.
     deduplicated = _deduplicate_web_results(
         combined_candidates
     )
 
+    relevant_candidates = [
+        candidate
+        for candidate in deduplicated
+        if _has_web_topic_match(query, candidate)
+    ]
+
     # Rank.
     ranked = rank_web_sources(
         query=query,
-        results=deduplicated,
+        results=relevant_candidates,
         limit=limit,
     )
 
     logger.info(
-        "Web retrieval completed targeted_queries=%s candidates=%s results=%s",
+        "Web retrieval completed targeted_queries=%s candidates=%s relevant=%s results=%s",
         len(targeted_queries),
         len(deduplicated),
+        len(relevant_candidates),
         len(ranked),
     )
 

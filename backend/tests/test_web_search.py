@@ -258,6 +258,63 @@ class SearxngMcpTests(unittest.TestCase):
 
 
 class WebEvidenceQualityTests(unittest.TestCase):
+    def test_latest_judgment_search_discards_unrelated_results(self):
+        search_result = {
+            "results": [
+                {
+                    "title": "News Releases | AGCO",
+                    "url": "https://news.agcocorp.com/",
+                    "content": "Agricultural equipment company updates.",
+                    "engine": "bing",
+                },
+                {
+                    "title": "Supreme Court privacy policy",
+                    "url": "https://example.org/privacy-policy",
+                    "content": "Read the Supreme Court website privacy policy.",
+                    "engine": "bing",
+                },
+                {
+                    "title": "Supreme Court privacy judgment in India",
+                    "url": "https://example.org/privacy-judgment",
+                    "content": "The Supreme Court discussed privacy in a judgment.",
+                    "engine": "yandex",
+                },
+            ],
+        }
+        with patch.object(
+            retrieval_orchestrator,
+            "search_web",
+            new=AsyncMock(return_value=search_result),
+        ):
+            sources = asyncio.run(
+                retrieval_orchestrator.retrieve_web(
+                    "What is the latest Supreme Court judgment on privacy?"
+                )
+            )
+
+        self.assertEqual(
+            [source["url"] for source in sources],
+            ["https://example.org/privacy-judgment"],
+        )
+
+    def test_no_topical_web_sources_returns_empty_list(self):
+        with patch.object(
+            retrieval_orchestrator,
+            "search_web",
+            new=AsyncMock(return_value={
+                "results": [{
+                    "title": "Live flight tracker",
+                    "url": "https://example.org/flights",
+                    "content": "Real-time air traffic map.",
+                }],
+            }),
+        ):
+            sources = asyncio.run(
+                retrieval_orchestrator.retrieve_web("what is law?")
+            )
+
+        self.assertEqual(sources, [])
+
     def test_original_ranker_demotes_but_retains_search_candidates(self):
         ranked = rank_web_sources(
             "what is an affidavit?",
