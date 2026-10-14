@@ -36,6 +36,14 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(result["client"][0], "198.51.100.9")
         self.assertEqual(result["scheme"], "https")
 
+    def test_render_three_hops_preserve_client_when_leftmost_is_forged(self):
+        chain = "198.51.100.9, 10.0.0.1, 10.0.0.2"
+        baseline = self.run_proxy(chain, 3)
+        forged = self.run_proxy("203.0.113.123, " + chain, 3)
+        self.assertEqual(baseline["client"], ("198.51.100.9", 0))
+        self.assertEqual(forged["client"], baseline["client"])
+        self.assertEqual(forged["scheme"], "https")
+
     def test_default_zero_and_malformed_or_short_headers_use_peer(self):
         for header, hops in [("198.51.100.9", 0), ("garbage", 1), ("", 1), ("198.51.100.9", 2), ("bad, 198.51.100.9", 1)]:
             self.assertEqual(self.run_proxy(header, hops)["client"], ("127.0.0.1", 42))

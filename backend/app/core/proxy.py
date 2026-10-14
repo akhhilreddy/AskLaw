@@ -1,10 +1,7 @@
 """Fixed-hop proxy handling; only enable hops on a proxy-only deployment."""
 import ipaddress
-import logging
 
 from app.core.config import settings
-
-logger = logging.getLogger(__name__)
 
 
 def forwarded_addresses(value):
@@ -27,12 +24,6 @@ class ProxyHopMiddleware:
         headers = dict(scope.get("headers", []))
         addresses = forwarded_addresses(headers.get(b"x-forwarded-for", b"").decode("latin1"))
         hops = settings.TRUSTED_PROXY_HOPS
-        if settings.PROXY_DIAGNOSTICS and scope.get("path") == "/health":
-            expected = forwarded_addresses(headers.get(b"x-asklaw-debug-client-ip", b"").decode("latin1"))
-            position = next((i for i, address in enumerate(reversed(addresses), 1)
-                             if expected and address == expected[0]), None)
-            # Temporary opt-in diagnostic: no addresses, credentials or full headers.
-            logger.warning("proxy_probe entries=%s expected_from_right=%s configured_hops=%s", len(addresses), position, hops)
         if hops and len(addresses) >= hops:
             scope = dict(scope)
             scope["client"] = (addresses[-hops], 0)
