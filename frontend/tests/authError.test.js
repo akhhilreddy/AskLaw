@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+test("rate-limit errors preserve the server's clear wait-time message", () => {
+  const detail = "Usage limit reached. Please try again in 300 seconds.";
+  assert.equal(normalizeSignupError({ response: { status: 429, data: { detail }, headers: { "retry-after": "300" } } }), detail);
+});
+
 import { normalizeSignupError } from "../src/services/authError.js";
 
 test("preserves a plain backend detail string", () => {

@@ -57,6 +57,7 @@ from app.services.passkey_service import (
     list_passkeys as list_user_passkeys,
 )
 from app.utils.security import create_token
+from app.core.rate_limit import limit_guest, limit_login, limit_signup
 from app.services.guest_service import (
     create_guest_user, ensure_guest_active, require_registered_user, GUEST_CHAT_LIMIT,
 )
@@ -127,7 +128,7 @@ def _ensure_verified(user: dict) -> None:
         )
 
 
-@router.post("/guest", dependencies=[Depends(require_trusted_origin)])
+@router.post("/guest", dependencies=[Depends(require_trusted_origin), Depends(limit_guest)])
 def guest_login(response: Response, refresh_token: str | None = Cookie(default=None)):
     # Reuse an active guest session: clicking again must not reset its quota.
     user = None
@@ -349,7 +350,7 @@ def delete_passkey(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/signup", status_code=status.HTTP_201_CREATED)
+@router.post("/signup", status_code=status.HTTP_201_CREATED, dependencies=[Depends(limit_signup)])
 def signup(user: SignUpRequest):
     email = str(user.email)
     existing_user = user_collection.find_one({"email": email})
@@ -519,7 +520,7 @@ def reset_password(payload: ResetPasswordRequest):
 
 @router.post(
     "/login",
-    dependencies=[Depends(require_trusted_origin)],
+    dependencies=[Depends(require_trusted_origin), Depends(limit_login)],
 )
 def login(user: UserLogin,response : Response):
 
@@ -557,7 +558,7 @@ def login(user: UserLogin,response : Response):
 
 @router.post(
     "/token",
-    dependencies=[Depends(require_trusted_origin)],
+    dependencies=[Depends(require_trusted_origin), Depends(limit_login)],
 )
 def login_swagger(
     response: Response,

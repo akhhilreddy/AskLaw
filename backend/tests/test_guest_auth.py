@@ -137,7 +137,7 @@ class GuestDemoTests(unittest.TestCase):
         from fastapi.testclient import TestClient
         app = FastAPI()
         app.include_router(auth.router, prefix="/auth")
-        with TestClient(app) as client, patch.object(auth, "create_guest_user", return_value=self.guest()) as create:
+        with TestClient(app) as client, patch.object(auth, "create_guest_user", return_value=self.guest()) as create, patch("app.core.rate_limit.redis_client.eval", return_value=0):
             rejected = client.post("/auth/guest", headers={"Origin": "https://untrusted.example"})
             self.assertEqual(rejected.status_code, 403)
             create.assert_not_called()

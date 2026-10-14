@@ -8,6 +8,7 @@ from fastapi import (
 
 from app.core.dependencies import get_current_user
 from app.services.guest_service import require_registered_user
+from app.core.rate_limit import limit_upload
 from app.services.document_service import (
     delete_owned_document,
     get_user_documents,
@@ -47,7 +48,7 @@ def delete_document(
     return result
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(limit_upload)])
 def upload_document(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user),

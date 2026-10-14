@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "AskLaw API"
     APP_ENV: str = "development"
     API_VERSION: str = "1.0.0"
+    TRUSTED_PROXY_HOPS: int = Field(default=0, ge=0, le=10)
+    PROXY_DIAGNOSTICS: bool = False
 
     SECRET_KEY: str
     ALGORITHM: Literal["HS256", "HS384", "HS512"]

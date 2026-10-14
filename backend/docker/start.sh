@@ -42,8 +42,7 @@ uvicorn app.main:app \
     --host 0.0.0.0 \
     --port "${render_port}" \
     --workers 1 \
-    --proxy-headers \
-    --forwarded-allow-ips="*" &
+    --no-proxy-headers &
 api_pid=$!
 
 exited_pid=""

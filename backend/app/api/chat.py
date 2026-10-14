@@ -24,6 +24,7 @@ from app.services.document_service import (
     get_owned_document,
 )
 from app.services.guest_service import consume_guest_question
+from app.core.rate_limit import limit_chat
 
 
 router = APIRouter()
@@ -33,7 +34,7 @@ router = APIRouter()
 # STREAM CHAT
 # =========================================================
 
-@router.post("/stream")
+@router.post("/stream", dependencies=[Depends(limit_chat)])
 def chat_stream(
     request: ChatRequest,
     current_user=Depends(

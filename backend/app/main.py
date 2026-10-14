@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.db.mongodb import ensure_indexes
+from app.core.proxy import ProxyHopMiddleware
 
 
 @asynccontextmanager
@@ -28,3 +29,4 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.add_middleware(ProxyHopMiddleware)
