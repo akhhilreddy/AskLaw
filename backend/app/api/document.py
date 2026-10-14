@@ -7,6 +7,7 @@ from fastapi import (
 )
 
 from app.core.dependencies import get_current_user
+from app.services.guest_service import require_registered_user
 from app.services.document_service import (
     delete_owned_document,
     get_user_documents,
@@ -51,6 +52,7 @@ def upload_document(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user),
 ):
+    require_registered_user(current_user)
     validate_upload(file)
 
     result = save_uploaded_document(

@@ -33,6 +33,11 @@ def create_new_conversation(
         get_current_user
     ),
 ):
+    if current_user.get("is_guest"):
+        return create_conversation(
+            user_id=str(current_user["_id"]),
+            guest_expires_at=current_user["guest_expires_at"],
+        )
     return create_conversation(
         user_id=str(
             current_user["_id"]

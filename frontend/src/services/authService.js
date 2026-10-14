@@ -1,6 +1,11 @@
 import api, { API_BASE_URL } from "./api";
 import { normalizeSignupError } from "./authError";
 
+export const continueAsGuest = async () => {
+  const response = await api.post("/auth/guest");
+  return response.data;
+};
+
 export const login = async (formData) => {
   const response = await api.post("/auth/login", formData);
   return response.data;

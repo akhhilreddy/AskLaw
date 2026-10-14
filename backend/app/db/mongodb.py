@@ -18,6 +18,10 @@ passkey_challenge_collection = db["passkey_challenges"]
 def ensure_indexes():
     """Create indexes used by ownership-scoped list and history queries."""
 
+    # Only guest records contain these timestamps; normal records never expire.
+    user_collection.create_index("guest_expires_at", expireAfterSeconds=0, name="guest_users_expiry_ttl")
+    conversation_collection.create_index("guest_expires_at", expireAfterSeconds=0, name="guest_conversations_expiry_ttl")
+
     user_collection.create_index(
         [("email", 1)],
         name="users_email_unique",

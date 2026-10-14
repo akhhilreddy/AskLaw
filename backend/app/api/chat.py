@@ -23,6 +23,7 @@ from app.core.dependencies import (
 from app.services.document_service import (
     get_owned_document,
 )
+from app.services.guest_service import consume_guest_question
 
 
 router = APIRouter()
@@ -75,6 +76,7 @@ def chat_stream(
     # STREAM RESPONSE
     # -----------------------------------------------------
 
+    consume_guest_question(current_user)
     return StreamingResponse(
         stream_response(
             request.messages,

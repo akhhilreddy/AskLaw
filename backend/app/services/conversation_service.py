@@ -9,7 +9,7 @@ from app.db.mongodb import conversation_collection
 # CREATE CONVERSATION
 # =========================================================
 
-def create_conversation(user_id: str):
+def create_conversation(user_id: str, guest_expires_at=None):
     now = datetime.now(timezone.utc)
 
     conversation = {
@@ -19,6 +19,9 @@ def create_conversation(user_id: str):
         "created_at": now,
         "updated_at": now,
     }
+
+    if guest_expires_at is not None:
+        conversation["guest_expires_at"] = guest_expires_at
 
     result = conversation_collection.insert_one(
         conversation

@@ -1102,6 +1102,14 @@ button:disabled,
   }
 }
 
+.guest-entry { margin-top: 1rem; }
+.guest-button { width: 100%; min-height: 44px; padding: .75rem; border: 1px solid #cbd5df; border-radius: 10px; background: transparent; color: #1b2e42; font: inherit; cursor: pointer; }
+.guest-button:disabled { opacity: .65; cursor: wait; }
+.guest-button:focus-visible, .server-readiness button:focus-visible { outline: 3px solid #a58140; outline-offset: 3px; }
+.server-readiness { position: sticky; top: 0; z-index: 100; padding: .75rem 1rem; background: #fff5dc; color: #453516; text-align: center; font-size: .9rem; }
+.server-readiness button { font: inherit; color: inherit; text-decoration: underline; background: transparent; border: 0; cursor: pointer; min-height: 44px; }
+.guest-notice { padding: .75rem 1rem; background: #f4f6f8; color: #42556a; font-size: .85rem; }
+
 @media (prefers-reduced-motion: reduce) {
   .field input,
   .sidebar,

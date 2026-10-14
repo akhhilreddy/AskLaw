@@ -12,6 +12,7 @@ const suggestions = [
   "What does Article 32 provide?",
   "What is the latest Supreme Court judgment on privacy?",
   "Explain Article 32 and recent developments.",
+  "What is an affidavit?",
 ];
 
 export default function Dashboard() {
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [documentContextError, setDocumentContextError] = useState("");
   const [userName, setUserName] = useState("Account");
+  const [isGuest, setIsGuest] = useState(false);
 
   const {
     conversation,
@@ -40,6 +42,7 @@ export default function Dashboard() {
       try {
         const user = await getMe();
         if (user?.name) setUserName(user.name);
+        setIsGuest(Boolean(user?.is_guest));
       } catch (error) {
         console.error("Failed to load user:", error);
       }
@@ -104,6 +107,7 @@ export default function Dashboard() {
       title={title}
     >
       <div className="chat-workspace">
+        {isGuest && <div className="guest-notice" role="status">Guest demo: 5 questions for 1 hour. Web research only; create an account to upload PDFs.</div>}
         {documentId && (
           <div className="document-context" role="status">
             <FileText size={15} aria-hidden="true" />
