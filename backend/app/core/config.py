@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     MAX_DOCUMENT_PAGES: int = Field(default=50, gt=0)
     MAX_DOCUMENT_TEXT_BYTES: int = Field(default=5 * 1024 * 1024, gt=0)
     SEARXNG_URL: str = "http://127.0.0.1:8080/search"
+    WEB_SEARCH_PROVIDER: Literal["searxng", "tavily"] = "searxng"
+    TAVILY_API_KEY: str = Field(default="", repr=False)
+    TAVILY_MAX_QUERIES: int = Field(default=2, ge=1, le=2)
+    TAVILY_TIMEOUT_SECONDS: float = Field(default=12, gt=0, le=30)
     SEARXNG_READINESS_BUDGET_SECONDS: float = Field(default=50, gt=0, le=120)
     RESEARCH_DEADLINE_SECONDS: float = Field(default=75, gt=0, le=180)
     SEARXNG_IDLE_REPROBE_SECONDS: float = Field(default=600, gt=0)

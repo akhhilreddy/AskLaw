@@ -68,7 +68,7 @@ async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> 
 @server.tool()
 async def search_web(query: str, limit: int = 5) -> dict:
     """
-    Search the web through the local AskLaw SearXNG instance.
+    Search through the configured provider, preserving the MCP result contract.
 
     Args:
         query: Search query.
@@ -77,6 +77,10 @@ async def search_web(query: str, limit: int = 5) -> dict:
     Returns:
         Structured search results.
     """
+
+    if settings.WEB_SEARCH_PROVIDER == "tavily":
+        from app.services.tavily_search import search_tavily
+        return await search_tavily(query, limit)
 
     url = settings.SEARXNG_URL
 

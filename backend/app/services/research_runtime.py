@@ -20,7 +20,7 @@ class RedactSearchTransportLogs(logging.Filter):
         args = record.args
         if isinstance(args, tuple) and len(args) > 1:
             host = getattr(args[1], "host", None)
-            if host and host == urlsplit(settings.SEARXNG_URL).hostname:
+            if host and host in {urlsplit(settings.SEARXNG_URL).hostname, "api.tavily.com"}:
                 return False
         return True
 

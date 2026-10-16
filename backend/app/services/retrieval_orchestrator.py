@@ -877,13 +877,17 @@ async def retrieve_web(
         several targeted SearXNG searches in parallel.
     """
 
-    if not await ensure_web_ready():
+    if settings.WEB_SEARCH_PROVIDER == "searxng" and not await ensure_web_ready():
         # Do not send search requests after readiness has exhausted its budget.
         return WebResults(notice_types=["web_unavailable"])
 
     targeted_queries = _build_targeted_web_queries(
         query
     )
+    if settings.WEB_SEARCH_PROVIDER == "tavily":
+        # Keep the original question and a focused expansion, but cap credit
+        # usage instead of issuing the full SearXNG query fan-out.
+        targeted_queries = targeted_queries[:settings.TAVILY_MAX_QUERIES]
 
     candidate_limit = max(
         limit * 3,
