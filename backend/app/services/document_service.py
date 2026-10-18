@@ -12,6 +12,7 @@ from app.tasks.document_tasks import (
 )
 from app.services.vector_service import delete_document_chunks
 from app.services.document_lifecycle import recover_stale_documents, cleanup_failed_document
+from app.services.agreement_documents import capture_pages
 
 
 # =========================================================
@@ -338,6 +339,7 @@ def save_uploaded_document(
     # -----------------------------------------------------
 
     full_text_parts = []
+    extracted_pages = []
     all_chunks = []
     extracted_text_bytes = 0
 
@@ -369,6 +371,7 @@ def save_uploaded_document(
             full_text_parts.append(
                 page_text
             )
+            extracted_pages.append({"page_number": page_number, "text": page_text})
 
         page_chunks = create_page_chunks(
             text=page_text,
@@ -443,6 +446,7 @@ def save_uploaded_document(
             timezone.utc
         ),
     }
+    document.update(capture_pages(filename, len(reader.pages), extracted_pages))
 
     result = document_collection.insert_one(
         document

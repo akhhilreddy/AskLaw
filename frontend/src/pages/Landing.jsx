@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, BookOpen, FileText, Globe2, Layers3, Search, Scale } from "lucide-react";
 import { Link } from "react-router-dom";
 import Logo from "../components/common/Logo";
+import "../styles/agreements.css";
 
 const modes = [
   {
@@ -82,6 +83,9 @@ export default function Landing() {
               <div className="preview-answer"><span className="preview-caption">Answer</span><h3>An answer, with a trail back to its sources.</h3><p>AskLAW organizes the answer around the material it finds, so you can assess the underlying evidence as you read.</p></div>
             </div>
           </div>
+        </section>
+        <section className="landing-section reveal" aria-label="Agreement review">
+          <div className="agreement-entry"><div><span className="eyebrow">Beyond the research chat</span><h2>Before You Sign.</h2><p>Read key-term passages in your rental agreement, compare two versions, and download a source-linked report. Text analysis, not a legal verdict.</p></div><Link className="primary-button" to="/agreements">Explore agreement review <ArrowRight size={16} /></Link></div>
         </section>
         <section id="how-it-works" className="landing-section reveal">
           <span className="eyebrow">The research flow</span><h2>From question to grounded answer.</h2>

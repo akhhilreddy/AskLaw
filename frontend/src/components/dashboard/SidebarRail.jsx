@@ -1,4 +1,4 @@
-import { FileText, History, MessageSquareText, PanelLeftOpen, Plus, Scale, ShieldCheck, UserRound } from "lucide-react";
+import { FileDiff, FileText, History, MessageSquareText, PanelLeftOpen, Plus, Scale, ShieldCheck, UserRound } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 export default function SidebarRail({ expandRef, onExpand, onNewChat, onClose, showRecent, userName }) {
@@ -12,6 +12,7 @@ export default function SidebarRail({ expandRef, onExpand, onNewChat, onClose, s
         <button type="button" aria-label="New chat" title="New chat" onClick={onNewChat}><Plus size={19} /></button>
         <NavLink to="/dashboard" onClick={onClose} aria-label="Chat" title="Chat" className={({ isActive }) => isActive ? "active" : ""}><MessageSquareText size={19} /></NavLink>
         <NavLink to="/documents" onClick={onClose} aria-label="Documents" title="Documents" className={({ isActive }) => isActive ? "active" : ""}><FileText size={19} /></NavLink>
+        <NavLink to="/agreements" onClick={onClose} aria-label="Before You Sign" title="Before You Sign" className={({ isActive }) => isActive ? "active" : ""}><FileDiff size={19} /></NavLink>
         <NavLink to="/security" onClick={onClose} aria-label="Security" title="Security" className={({ isActive }) => isActive ? "active" : ""}><ShieldCheck size={19} /></NavLink>
         {showRecent && <button type="button" aria-label="Recent chats" title="Recent chats" onClick={onExpand}><History size={19} /></button>}
       </nav>
