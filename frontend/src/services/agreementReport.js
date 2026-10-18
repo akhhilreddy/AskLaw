@@ -28,7 +28,7 @@ export function escapeHtml(value) {
   })[char]);
 }
 
-const quoteHtml = (item) => `<blockquote><pre>${escapeHtml(item.quote)}</pre><small>Document ${escapeHtml(item.document_id)} · page ${escapeHtml(item.page_number)} · characters ${escapeHtml(item.start)}–${escapeHtml(item.end)} (zero-based, end exclusive)<br>Page-text SHA-256: ${escapeHtml(item.page_text_sha256)}</small></blockquote>`;
+const quoteHtml = (item) => `<blockquote><pre>${escapeHtml(item.quote)}</pre><small>${item.scope === "clause_candidate" ? "Clause candidate · " : item.scope === "context_excerpt" ? "Local context excerpt · " : ""}${item.is_partial ? "Clipped excerpt · " : ""}Document ${escapeHtml(item.document_id)} · page ${escapeHtml(item.page_number)} · characters ${escapeHtml(item.start)}–${escapeHtml(item.end)} (zero-based, end exclusive)<br>Page-text SHA-256: ${escapeHtml(item.page_text_sha256)}</small></blockquote>`;
 
 export function agreementReportHtml(report, sample = false) {
   const comparison = Array.isArray(report.changes);

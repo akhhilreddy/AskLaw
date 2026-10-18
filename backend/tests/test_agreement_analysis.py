@@ -15,6 +15,88 @@ def document(text, identity="sample", **changes):
 
 
 class AgreementAnalysisTests(unittest.TestCase):
+    def test_numbered_pdf_sections_do_not_repeat_whole_pages_per_term(self):
+        text = ("SYNTHETIC PDF HEADER\n1. Parties\nFictional parties only.\n"
+                "2. Rent and payment\nMonthly rent: INR 12,000.\n"
+                "3. Security deposit\nSecurity deposit: INR 10,000.\n"
+                "4. Termination and notice\nGive 30 days written notice.\n"
+                "5. Renewal\nRenewal requires written agreement.")
+        source = document(text)
+        result = review_agreement(source)
+        terms = {term["kind"]: term["mentions"] for term in result["terms"]}
+        deposit = terms["security_deposit"][0]
+        self.assertEqual(deposit["quote"], "3. Security deposit\nSecurity deposit: INR 10,000.")
+        self.assertNotIn("Monthly rent", deposit["quote"])
+        self.assertNotIn("Renewal", terms["notice_period"][0]["quote"])
+        self.assertEqual(terms["notice_period"], terms["termination"])
+        self.assertEqual(deposit["scope"], "clause_candidate")
+        self.assertEqual(result["analysis_version"], "2")
+        for mentions in terms.values():
+            for item in mentions:
+                self.assertEqual(item["quote"], text[item["start"]:item["end"]])
+                self.assertEqual(item["page_text_sha256"], sha256(text.encode()).hexdigest())
+
+    def test_named_headings_keep_multiline_body_and_qualifications(self):
+        source = document("Security deposit\r\n\r\nNo deposit is due now.\r\nHowever, a later written amendment may change this.\r\nRent and payment\r\nRent is INR 5,000.")
+        result = review_agreement(source)
+        deposit = result["terms"][0]["mentions"][0]
+        self.assertIn("No deposit is due now", deposit["quote"])
+        self.assertIn("However", deposit["quote"])
+        self.assertNotIn("Rent is", deposit["quote"])
+        self.assertEqual(deposit["quote"], source.pages[0].text[deposit["start"]:deposit["end"]])
+
+    def test_unheaded_inline_terms_use_separate_sentence_context_not_whole_page(self):
+        text = "Monthly rent is INR 12,000. Deposit is Rs. 10,000. However, no deposit is due before signing. Give 30 days notice. Renewal needs consent."
+        terms = {term["kind"]: term["mentions"] for term in review_agreement(document(text))["terms"]}
+        deposit = terms["security_deposit"]
+        self.assertEqual(len(deposit), 1)
+        self.assertTrue(all(item["scope"] == "context_excerpt" for item in deposit))
+        self.assertIn("Deposit is Rs. 10,000.", deposit[0]["quote"])
+        self.assertIn("However, no deposit", deposit[0]["quote"])
+        self.assertNotIn("Monthly rent", deposit[0]["quote"])
+        self.assertNotIn("Renewal", terms["notice_period"][0]["quote"])
+        for items in terms.values():
+            for item in items:
+                self.assertEqual(item["quote"], text[item["start"]:item["end"]])
+
+    def test_long_unstructured_sentence_keeps_late_keyword_and_flags_clipping(self):
+        text = "Synthetic " + "filler " * 600 + "deposit is INR 10,000 " + "tail " * 600
+        item = review_agreement(document(text))["terms"][0]["mentions"][0]
+        self.assertTrue(item["is_partial"])
+        self.assertEqual(item["scope"], "context_excerpt")
+        self.assertIn("deposit is INR 10,000", item["quote"])
+        self.assertLessEqual(len(item["quote"]), 2000)
+        self.assertEqual(item["quote"], text[item["start"]:item["end"]])
+
+    def test_repeated_keyword_in_one_clause_is_deduplicated_but_different_pages_are_not(self):
+        text = "3. Security deposit\nDeposit INR 1. The deposit may be adjusted."
+        source = document("unused", page_count=2, pages=[{"page_number": 1, "text": text}, {"page_number": 2, "text": text}])
+        mentions = review_agreement(source)["terms"][0]["mentions"]
+        self.assertEqual([item["page_number"] for item in mentions], [1, 2])
+        self.assertEqual(compare_agreements(source, source)["analysis_version"], "1")
+
+    def test_numbered_clause_with_emoji_keeps_exact_unicode_offsets(self):
+        text = "SYNTHETIC 🏠 header\r\n2. Rent\r\nRent: INR 1.\r\n3. Security deposit\r\nNo deposit is due."
+        item = review_agreement(document(text))["terms"][0]["mentions"][0]
+        self.assertEqual(item["quote"], "3. Security deposit\r\nNo deposit is due.")
+        self.assertEqual(item["start"], text.index("3. Security deposit"))
+        self.assertEqual(item["end"], len(text))
+
+    def test_page_title_without_body_is_not_a_notice_clause(self):
+        text = ("SYNTHETIC HEADER\nPage 2 of 2\nNotice and other terms\n"
+                "4. Termination and notice\nGive 30 days written notice.\n"
+                "5. Renewal\nRenewal requires consent.")
+        result = review_agreement(document(text))
+        mentions = next(term for term in result["terms"] if term["kind"] == "notice_period")["mentions"]
+        self.assertEqual(len(mentions), 1)
+        self.assertEqual(mentions[0]["quote"], "4. Termination and notice\nGive 30 days written notice.")
+
+    def test_excessive_numbered_mentions_are_bounded_without_changing_comparison(self):
+        source = document("\n".join(f"{index}. Deposit INR 1." for index in range(1, 258)))
+        with self.assertRaisesRegex(ValueError, "Too many passages"):
+            review_agreement(source)
+        self.assertEqual(compare_agreements(source, source)["changes"], [])
+
     def test_term_mentions_retain_exact_page_quote_offsets_and_text_hash(self):
         source = document("SYNTHETIC TEST ONLY.\n\nSecurity deposit: INR 20,000.\n\nGive 30 days notice.")
         result = review_agreement(source)

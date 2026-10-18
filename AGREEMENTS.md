@@ -34,6 +34,24 @@ The hashes identify extracted text, NOT original PDF bytes or signature
 authenticity. Unchanged extracted text does not prove equivalent signed files.
 No LLM decides whether a term is lawful; user document text is never executed.
 
+### Focused review excerpts (review analysis version 2)
+
+Key-term review now prefers explicit numbered/named sections rather than
+repeating a whole extracted page under each heading. Within unstructured text,
+it selects the matching sentence and immediately following qualifying sentences.
+Multiple hits picking the same or an already-covered source range are deduplicated
+per term/page. The same clause may legitimately appear under notice and
+termination if it addresses both. Page references, exact code-point offsets and
+text hashes always refer to the untouched extracted page text.
+
+The UI and exported report distinguish **Clause candidate**, **Local context
+excerpt**, and **Clipped excerpt**. Sections are structural candidates, not
+guaranteed semantic/legal clauses. Long excerpts remain capped at 2,000 characters;
+unidentified terms are not called absent. Comparison analysis stays version 1
+and keeps its existing passage-group diff behavior. No re-upload is necessary
+for documents with stored page text: rerun Find key terms and download a new
+report. Previously downloaded reports are not rewritten.
+
 ## Usable first release
 
 - Protected `/agreements` page, linked from the landing page and both sidebar
@@ -103,11 +121,16 @@ cross-user denial, guests, legacy documents, partial pages, database outages and
 rate limits. Frontend Node tests cover safe, source-linked exports and errors.
 Live Mongo/Celery processing and deployment remain separate acceptance checks.
 
-Validation of this working tree: 248 backend tests passed with a process-only
+Validation of the focused-excerpt working tree: 256 backend tests passed with a process-only
 SearXNG provider baseline for the legacy search tests (the local `.env` was not
-changed); 22 frontend tests passed; ESLint, Vite build, compile checks and
+changed); 23 frontend tests passed; ESLint, Vite build, compile checks and
 `git diff --check` passed. Vite reports the existing large-bundle warning.
 Desktop (1440px) and mobile (390px) browser smoke checks used synthetic backend
 reports with mocked API responses: selection, comparison, sample, download and
 key-term review worked, with no page exceptions or horizontal overflow. This is
 not a claim that live Mongo/Celery or the deployed feature was exercised.
+
+On both generated rental PDFs, focused review reduced the deposit passage from
+809 to 143 characters and the notice passage from 953 to 194 characters, with
+unchanged page-text hashes and exact source offsets. Empty page titles were
+excluded. The previously downloaded HTML report is not modified automatically.

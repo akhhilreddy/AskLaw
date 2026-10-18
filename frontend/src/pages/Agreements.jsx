@@ -8,8 +8,9 @@ import { agreementError, agreementReportHtml, changeLabels, termLabels } from ".
 import "../styles/agreements.css";
 
 function SourceQuote({ source, title }) {
+  const label = source.scope === "clause_candidate" ? "Clause candidate" : source.scope === "context_excerpt" ? "Local context excerpt" : "Source passage";
   return <figure className="agreement-quote">
-    <figcaption>{title || "Source passage"} · page {source.page_number}</figcaption>
+    <figcaption>{title || label} · page {source.page_number}{source.is_partial ? " · clipped excerpt" : ""}</figcaption>
     <blockquote>{source.quote}</blockquote>
     <details><summary>Source reference</summary><small>Document {source.document_id}<br />Characters {source.start}–{source.end} (zero-based, end exclusive)<br />Page-text SHA-256: {source.page_text_sha256}</small></details>
   </figure>;

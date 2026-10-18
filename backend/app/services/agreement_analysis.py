@@ -7,6 +7,7 @@ import re
 from app.schemas.agreement import AGREEMENT_DISCLAIMER, AgreementText
 
 ANALYSIS_VERSION = "1"
+REVIEW_ANALYSIS_VERSION = "2"
 MAX_PASSAGES = 256
 MAX_PASSAGE_CHARACTERS = 2000
 # These identify candidate mentions, not complete clauses, legal defects or a
@@ -23,6 +24,119 @@ TERM_PATTERNS = {
 }
 _NUMBERS = re.compile(
     r"(?:₹|Rs\.?|INR)\s*\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?\s*(?:(?:days?|months?|years?)\b|%)", re.I)
+_SECTION_NAMES = (r"(?:Security deposit|Rent(?: and payment)?|Notice(?: period| and other terms)?|"
+                  r"Lock[ -]in(?: period)?|Termination(?: and notice)?|Renewal|"
+                  r"Maintenance and deductions|Disputes(?: and jurisdiction)?)")
+_HEADING = re.compile(
+    r"(?m)^[ \t]*(?:(?:\d{1,3}[.)]|\d{1,3}(?:\.\d{1,3})+[.)]?|[A-Z][.)])"
+    r"[ \t]+[A-Za-z]|Clause[ \t]+\d{1,3}[.:) -]+[A-Za-z]|"
+    + _SECTION_NAMES + r"[ \t]*:?[ \t]*\r?$)", re.I)
+_BARE_HEADING = re.compile(_SECTION_NAMES + r"[ \t]*:?", re.I)
+_QUALIFIER = re.compile(r"^(?:however|except|unless|provided|subject to|but|this|that|such|it|"
+                        r"the (?:above|foregoing|deposit|amount|notice|payment))\b", re.I)
+
+
+def _trim_span(text, start, end):
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
+
+
+def _review_units(text):
+    """Prefer explicit numbered/named sections; never rewrite extracted text."""
+    headings = {match.start() for match in _HEADING.finditer(text)}
+    boundaries = sorted(set([0, *headings, len(text)]))
+    for start, end in zip(boundaries, boundaries[1:]):
+        if start in headings:
+            a, b = _trim_span(text, start, end)
+            if a < b:
+                yield a, b, True
+        else:
+            # Text without structural headings gets local sentence context,
+            # rather than treating a single-newline PDF page as one clause.
+            for paragraph in re.finditer(r"\S[\s\S]*?(?=\r?\n[ \t]*\r?\n|\Z)", text[start:end]):
+                a, b = _trim_span(text, start + paragraph.start(), start + paragraph.end())
+                if a < b:
+                    yield a, b, False
+
+
+def _sentence_spans(text, start, end):
+    spans = []
+    cursor = start
+    for boundary in re.finditer(r"[.!?][ \t\r\n]+(?=[A-Z0-9\"(])", text[start:end]):
+        stop = start + boundary.start() + 1
+        # Do not sever currency, common honorifics or section abbreviations.
+        word = re.search(r"([A-Za-z]+)\.$", text[cursor:stop])
+        if word and word.group(1).lower() in {"rs", "mr", "mrs", "ms", "dr", "no", "sec", "art", "etc"}:
+            continue
+        a, b = _trim_span(text, cursor, stop)
+        if a < b:
+            spans.append((a, b))
+        cursor = start + boundary.end()
+    a, b = _trim_span(text, cursor, end)
+    if a < b:
+        spans.append((a, b))
+    return spans
+
+
+def _term_mentions(document, pattern):
+    mentions = []
+    for page in document.pages:
+        text = page.text
+        digest = sha256(text.encode()).hexdigest()
+        selected = {}
+        for start, end, structured in _review_units(text):
+            if structured and _BARE_HEADING.fullmatch(text[start:end]):
+                # A standalone page/category title followed immediately by a
+                # numbered section is not itself a substantive term passage.
+                continue
+            matches = list(re.finditer(pattern, text[start:end], re.I))
+            if not matches:
+                continue
+            sentences = _sentence_spans(text, start, end)
+            for match in matches:
+                hit_start, hit_end = start + match.start(), start + match.end()
+                a, b = start, end
+                scope = "clause_candidate"
+                if not structured or end - start > MAX_PASSAGE_CHARACTERS:
+                    scope = "context_excerpt"
+                    for index, (first, last) in enumerate(sentences):
+                        if first <= hit_start < last:
+                            a, b = first, last
+                            # Keep immediately following qualifying sentences
+                            # within the same section/paragraph, when bounded.
+                            for next_start, next_end in sentences[index + 1:]:
+                                if not _QUALIFIER.match(text[next_start:next_end]) or next_end - a > MAX_PASSAGE_CHARACTERS:
+                                    break
+                                b = next_end
+                            break
+                partial = b - a > MAX_PASSAGE_CHARACTERS
+                if partial:
+                    # Centre a bounded window on the actual hit, not on the
+                    # beginning of a long clause that may omit the keyword.
+                    a = max(a, hit_start - MAX_PASSAGE_CHARACTERS // 2)
+                    b = min(b, a + MAX_PASSAGE_CHARACTERS)
+                    if hit_end > b:
+                        a, b = max(start, hit_end - MAX_PASSAGE_CHARACTERS), hit_end
+                    a, b = _trim_span(text, a, b)
+                selected[(a, b)] = {"document_id": document.document_id, "page_number": page.page_number,
+                    "start": a, "end": b, "quote": text[a:b], "page_text_sha256": digest,
+                    "scope": scope, "is_partial": partial}
+                if len(selected) + len(mentions) > MAX_PASSAGES:
+                    raise ValueError("Too many passages for bounded agreement analysis")
+        # Multiple keyword hits may pick a qualifying sentence already included
+        # by an earlier hit. Show that source range once, not again as a subset.
+        retained = []
+        for a, b in sorted(selected, key=lambda span: (span[0], -span[1])):
+            if retained and a >= retained[-1][0] and b <= retained[-1][1]:
+                continue
+            retained.append((a, b))
+        mentions.extend(selected[key] for key in retained)
+        if len(mentions) > MAX_PASSAGES:
+            raise ValueError("Too many passages for bounded agreement analysis")
+    return mentions
 
 
 def text_digest(document):
@@ -49,18 +163,19 @@ def passages(document: AgreementText):
 
 
 def review_agreement(document: AgreementText):
-    source_passages = passages(document)
+    passages(document)  # Preserve the existing global input-complexity guard.
     terms = []
     for kind, pattern in TERM_PATTERNS.items():
-        mentions = [passage for passage in source_passages if re.search(pattern, passage["quote"], re.I)]
+        mentions = _term_mentions(document, pattern)
         terms.append({"kind": kind, "status": "mentions_found" if mentions else "not_identified",
                       "mentions": mentions})
-    return {"analysis_version": ANALYSIS_VERSION, "document_id": document.document_id,
+    return {"analysis_version": REVIEW_ANALYSIS_VERSION, "document_id": document.document_id,
             "title": document.title, "extracted_text_sha256": text_digest(document),
             "terms": terms, "disclaimer": AGREEMENT_DISCLAIMER,
             "limitations": ["Keyword-assisted English text review, not a legal risk score.",
                             "Not identified means the matcher found no mention, not that the term is absent.",
-                            "Passages may be bounded excerpts rather than complete clauses.",
+                            "Numbered/named sections are clause candidates; unstructured text uses local sentence context.",
+                            "Context excerpts and clipped passages may omit qualifications; read the full agreement.",
                             "No law, state-specific rule, deadline or enforceability opinion is inferred."]}
 
 
@@ -104,5 +219,5 @@ def compare_agreements(before: AgreementText, after: AgreementText):
 
 
 def export_report(report):
-    """Deterministic JSON export foundation; PDF/UI export is a later slice."""
+    """Deterministic JSON export; the frontend separately renders HTML reports."""
     return json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")

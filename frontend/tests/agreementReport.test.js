@@ -34,3 +34,16 @@ test("errors preserve actionable reupload and 429 retry information", () => {
   assert.match(agreementError({ code: "ERR_NETWORK" }), /connection/);
   assert.equal(typeof agreementError({ response: { data: { detail: [{ msg: "bad" }] } } }), "string");
 });
+
+test("review export distinguishes clause candidates from clipped context without trusting labels", () => {
+  const report = { ...review, terms: [{kind: "rent_and_payment", mentions: [
+    {...source, scope: "clause_candidate"},
+    {...source, scope: "context_excerpt", is_partial: true},
+    {...source, scope: '<script>fake scope</script>'},
+  ]}] };
+  const html = agreementReportHtml(report);
+  assert.ok(html.includes("Clause candidate"));
+  assert.ok(html.includes("Local context excerpt"));
+  assert.ok(html.includes("Clipped excerpt"));
+  assert.ok(!html.includes("<script>"));
+});
