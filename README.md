@@ -56,7 +56,7 @@ SearXNG remains an optional configured provider and has deployment files in the 
 - Password, Google, and passkey sign-in all issue the same AskLaw access token and HttpOnly refresh cookie. The access token is held in browser `localStorage`; the refresh cookie uses the `/auth` path, `SameSite=None` in production with `Secure`, and `SameSite=Lax` for local development.
 - The frontend restores protected sessions with `/auth/me` and performs one shared refresh attempt after an authenticated request receives `401`.
 - Passkeys are bound to their WebAuthn relying-party domain. A passkey registered for `localhost` does not sign in to `askklaw.netlify.app`; users register a production passkey separately.
-- **Continue as guest** creates a temporary demo account: five chat questions within a one-hour session, web research only. Guests cannot upload PDFs or review private agreements, but can try the clearly labelled synthetic Before You Sign sample.
+- **Try without signing up:** Guest access offers five web-research questions within a one-hour session. PDF uploads require a registered account.
 - A slow first API health check shows a server-waking message. The interface includes example questions and the disclaimer: "AskLaw provides legal information, not legal advice."
 
 ### Document workspace
