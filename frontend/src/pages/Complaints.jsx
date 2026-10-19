@@ -5,6 +5,7 @@ import AppLayout from "../layout/AppLayout";
 import ComplaintEvidencePicker from "../components/dashboard/ComplaintEvidencePicker";
 import ComplaintImport from "../components/dashboard/ComplaintImport";
 import ComplaintIntake from "../components/dashboard/ComplaintIntake";
+import ComplaintConfirmation from "../components/dashboard/ComplaintConfirmation";
 import { getMe } from "../services/authService";
 import api from "../services/api";
 import { complaintError, complaintPackHtml, emptyComplaint } from "../services/complaintPack";
@@ -28,6 +29,20 @@ export default function Complaints() {
   const [reviewed, setReviewed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [intakeSession, setIntakeSession] = useState(0);
+  const [confirmation, setConfirmation] = useState(null);
+  const confirmationSignature = JSON.stringify([data, saved, dirty, letter]);
+  const pendingConfirmation = confirmation?.signature === confirmationSignature ? confirmation : null;
+
+  function requestConfirmation(kind, caseId) {
+    setConfirmation({ kind, caseId, signature: confirmationSignature });
+  }
+  function confirmPending() {
+    if (!pendingConfirmation || busy) return;
+    setConfirmation(null);
+    if (pendingConfirmation.kind === "new") newComplaint(true);
+    else if (pendingConfirmation.kind === "open") openCase(pendingConfirmation.caseId, true);
+    else removeCase(true);
+  }
 
   useEffect(() => {
     let active = true;
@@ -55,8 +70,9 @@ export default function Complaints() {
 
   async function refreshCases() { setCases((await api.get("/complaints", { timeout: 10000 })).data); }
 
-  function newComplaint() {
-    if (dirty && !window.confirm("Discard unsaved edits?")) return;
+  function newComplaint(confirmed = false) {
+    if (busy) return;
+    if (dirty && confirmed !== true) { requestConfirmation("new"); return; }
     setSaved(null); setData(emptyComplaint()); setDirty(false); setPack(null); setReviewed(false);
     setIntakeSession((value) => value + 1);
   }
@@ -75,8 +91,9 @@ export default function Complaints() {
     finally { setBusy(false); }
   }
 
-  async function openCase(caseId) {
-    if (busy || (dirty && !window.confirm("Discard unsaved edits and open another complaint?"))) return;
+  async function openCase(caseId, confirmed = false) {
+    if (busy) return;
+    if (dirty && confirmed !== true) { requestConfirmation("open", caseId); return; }
     setBusy(true); setError("");
     try {
       const response = await api.get(`/complaints/${caseId}`, { timeout: 10000 });
@@ -96,8 +113,9 @@ export default function Complaints() {
     finally { setBusy(false); }
   }
 
-  async function removeCase() {
-    if (!saved || busy || !window.confirm("Delete this complaint and its saved draft? Your uploaded PDFs will be kept.")) return;
+  async function removeCase(confirmed = false) {
+    if (!saved || busy) return;
+    if (confirmed !== true) { requestConfirmation("delete"); return; }
     setBusy(true); setError("");
     try {
       await api.delete(`/complaints/${saved.case_id}`, { params: { revision: saved.revision }, timeout: 10000 });
@@ -123,6 +141,9 @@ export default function Complaints() {
     {error && <p className="complaint-error" role="alert">{error}</p>}
     {loading ? <p role="status">Loading your workspace…</p> : user?.is_guest ? <section className="complaint-card"><h2>Keep private complaint records in your own account.</h2><p><Link to="/signup">Create an account</Link> or <Link to="/login">sign in</Link> to save complaints and link your uploaded PDFs. Guest access remains web research only.</p></section> : user && <>
       <section className="complaint-card complaint-library"><div><h2>Saved complaints</h2><p>Latest 50. Save edits before leaving this page.</p></div><button type="button" disabled={busy} onClick={newComplaint}><Plus size={15} /> New complaint</button><button type="button" disabled={busy || refreshing} onClick={() => { setRefreshing(true); setError(""); setRetry((value) => value + 1); }}>{refreshing ? "Refreshing lists…" : "Refresh lists"}</button><div className="complaint-case-list">{cases.length ? cases.map((item) => <button type="button" key={item.case_id} disabled={busy} aria-pressed={saved?.case_id === item.case_id} onClick={() => openCase(item.case_id)}><FolderOpen size={14} /> {item.title}</button>) : <p>No saved complaints yet.</p>}</div></section>
+      {pendingConfirmation && <ComplaintConfirmation key={`${pendingConfirmation.kind}-${pendingConfirmation.caseId || ""}`} title={pendingConfirmation.kind === "delete" ? "Delete this complaint?" : "Discard unsaved edits?"} confirmLabel={pendingConfirmation.kind === "delete" ? "Delete saved complaint" : pendingConfirmation.kind === "open" ? "Discard edits and open complaint" : "Discard edits and start new"} disabled={busy} onCancel={() => setConfirmation(null)} onConfirm={confirmPending}>
+        <p>{pendingConfirmation.kind === "delete" ? "This removes the complaint and its saved draft. Your uploaded PDFs will be kept." : pendingConfirmation.kind === "open" ? "Your unsaved edits will be discarded before opening the selected complaint." : "Your unsaved edits will be discarded before starting a new complaint."}</p>
+      </ComplaintConfirmation>}
       <ComplaintIntake key={`intake-${intakeSession}`} data={data} disabled={busy} onApply={(patch) => edit(patch)} />
       <ComplaintImport key={`import-${intakeSession}`} documents={documents} disabled={busy} data={data} onApply={(patch) => edit(patch)} />
       <form onSubmit={(event) => { event.preventDefault(); save(); }}>

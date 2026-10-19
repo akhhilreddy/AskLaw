@@ -61,6 +61,13 @@ session. Applied fields/events persist through the existing case save, as
 user-confirmed accounts; narrative source snippets are not certified evidence
 or a new provenance ledger. Reloading before saving loses pending intake.
 
+Replacement, discard/open/new and delete confirmations are rendered inside the
+workspace, not with browser alert/confirm dialogs. Replacement compares current
+and suggested values; Cancel makes no change. Pending confirmations are bound to
+the reviewed state and invalidated by edits. The browser-controlled close/reload
+warning remains for unsaved changes; it cannot be replaced by in-page UI when
+the user closes or reloads the tab.
+
 Intake shares registered-account/chat rate limits. It has a 25-second hard async
 deadline, 5-second connect timeout, 20-second phase timeouts and no SDK retries.
 Provider failures, missing key, malformed JSON and timeout produce a sanitized

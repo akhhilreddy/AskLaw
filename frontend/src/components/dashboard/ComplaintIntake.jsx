@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../../services/api";
 import { complaintError, importDecision, matchingImportEvents } from "../../services/complaintPack";
 import { applyIntakeAnswer, applyNarrativeSuggestions, intakeQuestions } from "../../services/complaintIntake";
+import ComplaintConfirmation from "./ComplaintConfirmation";
 
 export default function ComplaintIntake({ data, disabled, onApply }) {
   const [description, setDescription] = useState("");
@@ -16,6 +17,8 @@ export default function ComplaintIntake({ data, disabled, onApply }) {
   const [answer, setAnswer] = useState({ key: "", value: "" });
   const [error, setError] = useState("");
   const [eventChoices, setEventChoices] = useState({});
+  const [replacement, setReplacement] = useState(null);
+  const replacementSignature = JSON.stringify([data, selected, eventChoices]);
   const reviewSignature = JSON.stringify(data);
   const question = intakeQuestions(data, skipped)[0];
   const currentAnswer = answer.key === question?.key ? answer.value : "";
@@ -32,12 +35,17 @@ export default function ComplaintIntake({ data, disabled, onApply }) {
     } catch (requestError) { setError(complaintError(requestError)); }
     finally { setBusy(false); }
   }
-  function apply() {
+  function apply(confirmed = false) {
+    if (disabled || busy || reviewed !== reviewSignature || !selected.length) return;
+    if (confirmed && replacement?.signature !== replacementSignature) return;
     const items = result.suggestions.filter((item) => selected.includes(item.suggestion_id));
     const overwrites = items.filter((item) => item.field && data[item.field] && data[item.field] !== item.value && !(item.field === "issue_type" && !data.description));
-    if (overwrites.length && !window.confirm(`Replace existing values for ${overwrites.map((item) => item.field.replaceAll("_", " ")).join(", ")}? Review old and suggested values first.`)) return;
+    if (overwrites.length && !confirmed) {
+      setReplacement({ signature: replacementSignature, overwrites });
+      return;
+    }
     const matches = Object.fromEntries(items.filter((item) => item.event).map((item) => [item.suggestion_id, eventChoices[item.suggestion_id] || importDecision(data, item)]));
-    try { onApply(applyNarrativeSuggestions(data, items, matches)); setApplied(true); setError(""); }
+    try { onApply(applyNarrativeSuggestions(data, items, matches)); setApplied(true); setReplacement(null); setError(""); }
     catch (applyError) { setError(applyError.message); }
   }
   function respond() {
@@ -67,7 +75,11 @@ export default function ComplaintIntake({ data, disabled, onApply }) {
         {item.field && data[item.field] && data[item.field] !== item.value && <p>Current value: {data[item.field]}</p>}
       </div>)}
       <label className="complaint-check"><input type="checkbox" checked={reviewed === reviewSignature} onChange={(event) => setReviewed(event.target.checked ? reviewSignature : false)} /> I reviewed the selected suggestions. Apply them as my unconfirmed account.</label>
-      <button type="button" disabled={reviewed !== reviewSignature || !selected.length} onClick={apply}>Apply reviewed suggestions</button>
+      <button type="button" disabled={reviewed !== reviewSignature || !selected.length} onClick={() => apply()}>Apply reviewed suggestions</button>
+      {replacement?.signature === replacementSignature && reviewed === reviewSignature && <ComplaintConfirmation title="Replace existing complaint values?" confirmLabel="Replace values and apply" onCancel={() => setReplacement(null)} onConfirm={() => apply(true)}>
+        <p>Review each change below. Nothing is replaced until you confirm; applying does not save or confirm the facts.</p>
+        {replacement.overwrites.map((item) => <div key={item.suggestion_id}><h4>{item.field.replaceAll("_", " ")}</h4><p><strong>Current:</strong> {data[item.field]}</p><p><strong>Suggested:</strong> {item.value}</p></div>)}
+      </ComplaintConfirmation>}
     </fieldset>}
     {applied && <div><h3>Complete missing details</h3><p>PDF import below can fill missing details too. Conflicting document values require your review. You can edit everything in the form; no automatic save or filing.</p>
       {question ? <fieldset disabled={disabled || busy}><legend>One question at a time</legend><label>{question.prompt}<input aria-label="Answer missing detail" type={question.type || "text"} inputMode={question.field === "amount_inr" ? "decimal" : undefined} maxLength={question.maxLength} value={currentAnswer} onChange={(event) => setAnswer({ key: question.key, value: event.target.value })} /></label><button type="button" onClick={respond}>Use this answer</button>{" "}<button type="button" onClick={() => { setSkipped([...skipped, question.key]); setAnswer({ key: "", value: "" }); setError(""); }}>I don&apos;t know / skip</button></fieldset>

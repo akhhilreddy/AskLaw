@@ -6,8 +6,9 @@ export async function runComplaintWorkflowRegression(page, { fixture, buildPack,
   let saved = null;
   let failRefresh = false;
   const errors = [];
+  const dialogs = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  page.on("dialog", (dialog) => dialog.accept());
+  page.on("dialog", async (dialog) => { dialogs.push(dialog.type()); await dialog.dismiss(); });
   await page.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -41,6 +42,9 @@ export async function runComplaintWorkflowRegression(page, { fixture, buildPack,
   await page.getByRole("button", { name: "Prepare my complaint", exact: true }).click();
   await page.getByLabel(/I reviewed the selected suggestions/).check();
   await page.getByRole("button", { name: "Apply reviewed suggestions", exact: true }).click();
+  if (await page.getByRole("button", { name: "Replace values and apply", exact: true }).count()) {
+    await page.getByRole("button", { name: "Replace values and apply", exact: true }).click();
+  }
   await page.getByLabel("Answer missing detail", { exact: true }).fill("Pending name answer");
   await page.getByRole("button", { name: "Refresh lists", exact: true }).click();
   await page.getByRole("button", { name: "Refresh lists", exact: true }).waitFor();
@@ -119,6 +123,9 @@ export async function runComplaintWorkflowRegression(page, { fixture, buildPack,
   await page.getByRole("button", { name: "Prepare my complaint", exact: true }).click();
   await page.getByLabel(/I reviewed the selected suggestions/).check();
   await page.getByRole("button", { name: "Apply reviewed suggestions", exact: true }).click();
+  if (await page.getByRole("button", { name: "Replace values and apply", exact: true }).count()) {
+    await page.getByRole("button", { name: "Replace values and apply", exact: true }).click();
+  }
   assert.equal(await page.locator("form input[type=date]").count(), 5);
   await page.getByLabel(/I checked the names/).check();
   await page.getByRole("button", { name: "Save complaint", exact: true }).click();
@@ -126,6 +133,7 @@ export async function runComplaintWorkflowRegression(page, { fixture, buildPack,
   assert.equal(saved.data.events.length, 5);
   assert.equal(saved.data.events.filter((event) => event.evidence_ids.length).length, 4);
   assert.equal(saved.data.evidence.length, 10);
+  assert.deepEqual(dialogs, []);
   return { width, events: saved.data.events.length, source_references: saved.data.evidence.length,
     refresh_and_save_preserved_intake: true, grouped_review: true, narrative_preserved: true, reverse_import_order: true, errors: 0 };
 }
