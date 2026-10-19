@@ -87,6 +87,9 @@ export default function Landing() {
         <section className="landing-section reveal" aria-label="Agreement review">
           <div className="agreement-entry"><div><span className="eyebrow">Beyond the research chat</span><h2>Before You Sign.</h2><p>Read key-term passages in your rental agreement, compare two versions, and download a source-linked report. Text analysis, not a legal verdict.</p></div><Link className="primary-button" to="/agreements">Explore agreement review <ArrowRight size={16} /></Link></div>
         </section>
+        <section className="landing-section reveal" aria-label="Consumer complaint preparation">
+          <div className="agreement-entry"><div><span className="eyebrow">When something goes wrong</span><h2>Consumer Complaint Pack.</h2><p>Organize your chronology and supporting PDF excerpts. Review a complaint-letter draft and download a preparation pack. You stay in control; nothing is filed automatically.</p></div><Link className="primary-button" to="/complaints">Prepare a complaint <ArrowRight size={16} /></Link></div>
+        </section>
         <section id="how-it-works" className="landing-section reveal">
           <span className="eyebrow">The research flow</span><h2>From question to grounded answer.</h2>
           <div className="process">

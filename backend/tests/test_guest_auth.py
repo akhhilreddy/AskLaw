@@ -149,8 +149,9 @@ class GuestDemoTests(unittest.TestCase):
         from app.db import mongodb
         with patch.object(mongodb, "user_collection") as users, patch.object(mongodb, "conversation_collection") as chats:
             # Other collection indexes are mocked too: this test never uses a database.
-            with patch.object(mongodb, "document_collection"), patch.object(mongodb, "auth_code_collection"), patch.object(mongodb, "oauth_exchange_collection"), patch.object(mongodb, "passkey_collection"), patch.object(mongodb, "passkey_challenge_collection"):
+            with patch.object(mongodb, "document_collection"), patch.object(mongodb, "complaint_collection") as complaints, patch.object(mongodb, "auth_code_collection"), patch.object(mongodb, "oauth_exchange_collection"), patch.object(mongodb, "passkey_collection"), patch.object(mongodb, "passkey_challenge_collection"):
                 mongodb.ensure_indexes()
+        complaints.create_index.assert_called_once_with([("user_id", 1), ("updated_at", -1)], name="complaints_user_updated_at")
         users.create_index.assert_any_call("guest_expires_at", expireAfterSeconds=0, name="guest_users_expiry_ttl")
         chats.create_index.assert_any_call("guest_expires_at", expireAfterSeconds=0, name="guest_conversations_expiry_ttl")
 
