@@ -33,6 +33,11 @@ def create_new_conversation(
         get_current_user
     ),
 ):
+    if current_user.get("is_guest"):
+        return create_conversation(
+            user_id=str(current_user["_id"]),
+            guest_expires_at=current_user["guest_expires_at"],
+        )
     return create_conversation(
         user_id=str(
             current_user["_id"]
@@ -96,6 +101,7 @@ def create_message(
         get_current_user
     ),
 ):
+    extra = {"availability_receipt": message.availability_receipt} if message.availability_receipt is not None else {}
     saved_message = add_message(
         conversation_id=conversation_id,
         user_id=str(
@@ -103,6 +109,7 @@ def create_message(
         ),
         role=message.role,
         content=message.content,
+        **extra,
     )
 
     if not saved_message:

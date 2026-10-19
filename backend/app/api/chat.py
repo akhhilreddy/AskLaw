@@ -23,6 +23,28 @@ from app.core.dependencies import (
 from app.services.document_service import (
     get_owned_document,
 )
+from app.services.guest_service import consume_guest_question
+from app.core.rate_limit import limit_chat
+from app.services.conversation_service import get_conversation
+import anyio
+from starlette.concurrency import run_in_threadpool
+
+
+class ClosingStreamingResponse(StreamingResponse):
+    def __init__(self, body, **kwargs):
+        self.iterator = body
+        super().__init__(body, **kwargs)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # Closing the sync generator cancels its retrieval task promptly.
+            # Run this off the ASGI loop, and shield cleanup from disconnect.
+            with anyio.CancelScope(shield=True):
+                close = getattr(self.iterator, "close", None)
+                if close:
+                    await run_in_threadpool(close)
 
 
 router = APIRouter()
@@ -32,7 +54,7 @@ router = APIRouter()
 # STREAM CHAT
 # =========================================================
 
-@router.post("/stream")
+@router.post("/stream", dependencies=[Depends(limit_chat)])
 def chat_stream(
     request: ChatRequest,
     current_user=Depends(
@@ -46,6 +68,9 @@ def chat_stream(
     user_id = str(
         current_user["_id"]
     )
+
+    if request.conversation_id and get_conversation(request.conversation_id, user_id) is None:
+        raise HTTPException(404, "Conversation not found")
 
     if request.document_id:
         document = get_owned_document(
@@ -75,11 +100,13 @@ def chat_stream(
     # STREAM RESPONSE
     # -----------------------------------------------------
 
-    return StreamingResponse(
-        stream_response(
-            request.messages,
-            user_id,
-            request.document_id,
-        ),
+    consume_guest_question(current_user)
+    if request.conversation_id:
+        body = stream_response(request.messages, user_id, request.document_id,
+                               conversation_id=request.conversation_id)
+    else:
+        body = stream_response(request.messages, user_id, request.document_id)
+    return ClosingStreamingResponse(
+        body,
         media_type="application/x-ndjson",
     )

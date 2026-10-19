@@ -19,7 +19,7 @@ Flow:
         |
         +---- RAG ------> Local document retrieval
         |
-        +---- WEB ------> Definition lookup or targeted web retrieval -> ranking
+        +---- WEB ------> Targeted web retrieval -> ranking
         |
         +---- HYBRID ---> RAG + targeted web retrieval
         |
@@ -58,10 +58,11 @@ from app.mcp.server import (
 from app.services.web_source_ranker import (
     rank_web_sources,
 )
-from app.services.wikipedia_service import (
-    definition_subject,
-    search_wikipedia_definition,
-)
+from app.core.config import settings
+from app.services.research_runtime import deadline_context, rag_pool, ensure_web_ready
+from app.services.research_runtime import remaining_seconds, RagUnavailable
+from app.services.availability import SearchResponse, WebResults, notices
+import time
 
 
 # ============================================================
@@ -743,6 +744,72 @@ def _deduplicate_web_results(
     return deduplicated
 
 
+WEB_QUERY_FILLER = {
+    "a", "an", "and", "are", "as", "at", "by", "does", "for", "from",
+    "how", "in", "is", "of", "on", "or", "the", "to", "was", "were",
+    "what", "when", "where", "which", "who", "why", "with",
+}
+
+WEB_EVENT_FILLER = {
+    "current", "latest", "new", "recent", "today", "judgment", "judgments",
+    "judgement", "judgements", "ruling", "rulings", "decision",
+    "decisions", "order", "orders", "supreme", "court",
+}
+
+WEB_LEGAL_EVENT_TERMS = re.compile(
+    r"\b(?:judg(?:e)?ments?|rulings?|decisions?|orders?|held|ruled|cases?|insc)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _has_web_topic_match(query: str, result: dict) -> bool:
+    """Reject search-engine results with no evidence of the queried topic.
+
+    Search engines sometimes return successful responses for an unrelated
+    query. A ranking score alone cannot turn those pages into evidence.
+    """
+
+    query_tokens = set(re.findall(r"[a-z0-9]+", query.casefold()))
+    topic_tokens = query_tokens - WEB_QUERY_FILLER
+    if _wants_current_legal_event(query):
+        specific_tokens = {
+            token for token in topic_tokens - WEB_EVENT_FILLER
+            if not re.fullmatch(r"20\d{2}", token)
+        }
+        if specific_tokens:
+            topic_tokens = specific_tokens
+
+    if not topic_tokens:
+        return False
+
+    title = str(result.get("title") or "")
+    content = str(result.get("content") or "")
+    source_tokens = set(re.findall(r"[a-z0-9]+", f"{title} {content}".casefold()))
+
+    # One substantive term is enough for short questions, while longer
+    # questions need more than an incidental single-word overlap.
+    required_matches = 1 if len(topic_tokens) <= 2 else 2
+    if len(topic_tokens & source_tokens) < required_matches:
+        return False
+
+    asks_for_decision = bool(re.search(
+        r"\b(?:judg(?:e)?ments?|rulings?|decisions?|orders?|verdicts?|cases?)\b",
+        query,
+        flags=re.IGNORECASE,
+    ))
+
+    if _wants_current_legal_event(query):
+        source_text = f"{title} {content}".casefold()
+        if asks_for_decision and not WEB_LEGAL_EVENT_TERMS.search(source_text):
+            return False
+        if re.search(r"\bsupreme\s+court\b", query, flags=re.IGNORECASE) and (
+            "supreme court" not in source_text
+        ):
+            return False
+
+    return True
+
+
 # ============================================================
 # RAG RETRIEVAL
 # ============================================================
@@ -806,28 +873,21 @@ async def retrieve_web(
     Normal query:
         one SearXNG search.
 
-    Simple, non-current definition query:
-        one attributed Wikipedia extract; no unreliable metasearch results.
-
     Current/recent legal query:
         several targeted SearXNG searches in parallel.
     """
 
-    subject = definition_subject(query)
-    if subject:
-        # Free-hosted metasearch engines can return unrelated pages for
-        # simple definitions. Use a short, attributed encyclopedia extract
-        # for this narrow case; never use it for current legal research.
-        definition_source = await search_wikipedia_definition(subject)
-        return rank_web_sources(
-            query=query,
-            results=[definition_source] if definition_source else [],
-            limit=limit,
-        )
+    if settings.WEB_SEARCH_PROVIDER == "searxng" and not await ensure_web_ready():
+        # Do not send search requests after readiness has exhausted its budget.
+        return WebResults(notice_types=["web_unavailable"])
 
     targeted_queries = _build_targeted_web_queries(
         query
     )
+    if settings.WEB_SEARCH_PROVIDER == "tavily":
+        # Keep the original question and a focused expansion, but cap credit
+        # usage instead of issuing the full SearXNG query fan-out.
+        targeted_queries = targeted_queries[:settings.TAVILY_MAX_QUERIES]
 
     candidate_limit = max(
         limit * 3,
@@ -850,6 +910,7 @@ async def retrieve_web(
 
     # Combine candidates.
     combined_candidates: list[dict] = []
+    failures = 0
 
     for search_result in search_results:
 
@@ -857,8 +918,12 @@ async def retrieve_web(
             search_result,
             Exception,
         ):
+            failures += 1
             logger.warning("A targeted web search failed: %s", type(search_result).__name__)
             continue
+
+        if isinstance(search_result, SearchResponse) and search_result.unavailable:
+            failures += 1
 
         normalized = _normalize_web_results(
             search_result
@@ -868,33 +933,41 @@ async def retrieve_web(
             normalized
         )
 
-    # Deduplicate.
+    # Deduplicate and discard unrelated search-engine results before ranking.
     deduplicated = _deduplicate_web_results(
         combined_candidates
     )
 
+    relevant_candidates = [
+        candidate
+        for candidate in deduplicated
+        if _has_web_topic_match(query, candidate)
+    ]
+
     # Rank.
     ranked = rank_web_sources(
         query=query,
-        results=deduplicated,
+        results=relevant_candidates,
         limit=limit,
     )
 
     logger.info(
-        "Web retrieval completed targeted_queries=%s candidates=%s results=%s",
+        "Web retrieval completed targeted_queries=%s candidates=%s relevant=%s results=%s",
         len(targeted_queries),
         len(deduplicated),
+        len(relevant_candidates),
         len(ranked),
     )
 
-    return ranked
+    notice_types = ["web_unavailable" if failures == len(search_results) else "web_partial"] if failures else []
+    return WebResults(ranked, notice_types)
 
 
 # ============================================================
 # MAIN ASYNC ORCHESTRATOR
 # ============================================================
 
-async def retrieve_for_query(
+async def _retrieve_for_query(
     query: str,
     user_id: str,
     document_id: str | None = None,
@@ -944,7 +1017,7 @@ async def retrieve_for_query(
 
     if route_value == "rag":
 
-        rag_results = await asyncio.to_thread(
+        rag_results = await rag_pool.run(
             retrieve_rag,
             query,
             user_id,
@@ -993,7 +1066,7 @@ async def retrieve_for_query(
 
     if route_value == "hybrid":
 
-        rag_task = asyncio.to_thread(
+        rag_task = rag_pool.run(
             retrieve_rag,
             query,
             user_id,
@@ -1006,24 +1079,34 @@ async def retrieve_for_query(
             web_limit,
         )
 
-        rag_results, web_results = (
-            await asyncio.gather(
-                rag_task,
-                web_task,
-            )
+        async def branch(awaitable, kind):
+            try:
+                value = await asyncio.wait_for(awaitable, timeout=max(.001, remaining_seconds() - .02))
+                return value, []
+            except TimeoutError:
+                return [], ["rag_timeout" if kind == "rag" else "web_unavailable"]
+            except RagUnavailable:
+                return [], ["rag_busy"]
+            except Exception:
+                logger.warning("Research dependency unavailable (%s)", kind)
+                return [], ["rag_unavailable" if kind == "rag" else "web_unavailable"]
+
+        (rag_results, rag_notices), (web_results, web_notices) = await asyncio.gather(
+            branch(rag_task, "rag"), branch(web_task, "web"),
         )
 
         return {
             "route": "hybrid",
             "rag_results": rag_results,
             "web_results": web_results,
+            "availability_notices": notices(rag_notices + web_notices),
         }
 
     # ========================================================
     # FALLBACK
     # ========================================================
 
-    rag_results = await asyncio.to_thread(
+    rag_results = await rag_pool.run(
         retrieve_rag,
         query,
         user_id,
@@ -1041,6 +1124,33 @@ async def retrieve_for_query(
 # ============================================================
 # SYNC HELPER
 # ============================================================
+
+async def retrieve_for_query(query, user_id, document_id=None, rag_limit=5, web_limit=5):
+    token = deadline_context.set(time.monotonic() + settings.RESEARCH_DEADLINE_SECONDS)
+    try:
+        result = await asyncio.wait_for(
+            _retrieve_for_query(query, user_id, document_id, rag_limit, web_limit),
+            timeout=settings.RESEARCH_DEADLINE_SECONDS,
+        )
+        web = result.get("web_results", [])
+        items = getattr(web, "availability_notices", [])
+        if items:
+            result["availability_notices"] = notices(
+                [item["type"] for item in result.get("availability_notices", []) + items])
+        return result
+    except TimeoutError:
+        return {"route": route_query(query).value, "rag_results": [], "web_results": [],
+                "availability_notices": notices(["research_timeout"])}
+    except RagUnavailable:
+        return {"route": "rag", "rag_results": [], "web_results": [],
+                "availability_notices": notices(["rag_busy"])}
+    except Exception:
+        logger.warning("Document research unavailable")
+        return {"route": "rag", "rag_results": [], "web_results": [],
+                "availability_notices": notices(["rag_unavailable"])}
+    finally:
+        deadline_context.reset(token)
+
 
 def retrieve_for_query_sync(
     query: str,

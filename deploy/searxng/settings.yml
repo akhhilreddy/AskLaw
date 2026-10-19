@@ -33,9 +33,14 @@ engines:
     disabled: true
 
   - name: bing
-    disabled: false
+    disabled: true
 
   - name: google
+    disabled: true
+
+  # Bing/Google may return unrelated results or deny requests from Render.
+  # Use the engine verified to return relevant results from Render.
+  - name: yandex
     disabled: false
 
 # Runtime values override the matching server settings through

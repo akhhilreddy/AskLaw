@@ -33,6 +33,7 @@ export const streamMessage = async (
   messages,
   onChunk,
   documentId = null,
+  conversationId = null,
 ) => {
 
   // -------------------------------------------------------
@@ -84,6 +85,7 @@ export const streamMessage = async (
 
       body: JSON.stringify({
         messages,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
         ...(documentId
           ? {
               document_id: documentId,

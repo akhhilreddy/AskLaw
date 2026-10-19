@@ -5,6 +5,8 @@ import httpx
 from mcp.server.mcpserver import MCPServer
 
 from app.core.config import settings
+from app.services.research_runtime import remaining_seconds, web_readiness
+from app.services.availability import SearchResponse
 
 
 logger = logging.getLogger(__name__)
@@ -33,9 +35,14 @@ def _is_transient_search_error(exc: Exception) -> bool:
 async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> dict:
     for attempt in range(SEARXNG_MAX_ATTEMPTS):
         try:
-            response = await client.get(url, params=params)
+            async with asyncio.timeout(remaining_seconds()):
+                response = await client.get(url, params=params)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+                raise ValueError("Invalid search response")
+            web_readiness.record_success(url)
+            return data
         except Exception as exc:
             can_retry = (
                 _is_transient_search_error(exc)
@@ -45,6 +52,8 @@ async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> 
                 raise
 
             delay = SEARXNG_RETRY_DELAYS_SECONDS[attempt]
+            if delay >= remaining_seconds():
+                raise TimeoutError("Web research deadline exceeded") from None
             logger.warning(
                 "SearXNG request temporarily unavailable; retrying "
                 "attempt=%s/%s delay_seconds=%s error=%s",
@@ -59,7 +68,7 @@ async def _request_search(client: httpx.AsyncClient, url: str, params: dict) -> 
 @server.tool()
 async def search_web(query: str, limit: int = 5) -> dict:
     """
-    Search the web through the local AskLaw SearXNG instance.
+    Search through the configured provider, preserving the MCP result contract.
 
     Args:
         query: Search query.
@@ -68,6 +77,10 @@ async def search_web(query: str, limit: int = 5) -> dict:
     Returns:
         Structured search results.
     """
+
+    if settings.WEB_SEARCH_PROVIDER == "tavily":
+        from app.services.tavily_search import search_tavily
+        return await search_tavily(query, limit)
 
     url = settings.SEARXNG_URL
 
@@ -107,21 +120,22 @@ async def search_web(query: str, limit: int = 5) -> dict:
                 }
             )
 
-        return {
+        return SearchResponse({
             "query": query,
             "results": results,
             "count": len(results),
-        }
+        })
 
     except Exception as exc:
+        web_readiness.invalidate(url)
         logger.warning("SearXNG request failed: %s", type(exc).__name__)
 
-        return {
+        return SearchResponse({
             "query": query,
             "results": [],
             "count": 0,
             "error": "Web search is temporarily unavailable",
-        }
+        }, unavailable=True)
 
 
 if __name__ == "__main__":

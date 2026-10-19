@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "AskLaw API"
     APP_ENV: str = "development"
     API_VERSION: str = "1.0.0"
+    TRUSTED_PROXY_HOPS: int = Field(default=0, ge=0, le=10)
 
     SECRET_KEY: str
     ALGORITHM: Literal["HS256", "HS384", "HS512"]
@@ -47,10 +48,17 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_NAME: str = "AskLAW"
     WEBAUTHN_ORIGIN: str = ""
     WEBAUTHN_CHALLENGE_EXPIRE_MINUTES: int = Field(default=5, ge=1, le=10)
-    MAX_DOCUMENT_UPLOAD_BYTES: int = Field(default=20 * 1024 * 1024, gt=0)
-    MAX_DOCUMENT_PAGES: int = Field(default=500, gt=0)
+    MAX_DOCUMENT_UPLOAD_BYTES: int = Field(default=5 * 1024 * 1024, gt=0)
+    MAX_DOCUMENT_PAGES: int = Field(default=50, gt=0)
     MAX_DOCUMENT_TEXT_BYTES: int = Field(default=5 * 1024 * 1024, gt=0)
     SEARXNG_URL: str = "http://127.0.0.1:8080/search"
+    WEB_SEARCH_PROVIDER: Literal["searxng", "tavily"] = "searxng"
+    TAVILY_API_KEY: str = Field(default="", repr=False)
+    TAVILY_MAX_QUERIES: int = Field(default=2, ge=1, le=2)
+    TAVILY_TIMEOUT_SECONDS: float = Field(default=12, gt=0, le=30)
+    SEARXNG_READINESS_BUDGET_SECONDS: float = Field(default=50, gt=0, le=120)
+    RESEARCH_DEADLINE_SECONDS: float = Field(default=75, gt=0, le=180)
+    SEARXNG_IDLE_REPROBE_SECONDS: float = Field(default=600, gt=0)
     MCP_HOST: str = "127.0.0.1"
     MCP_PORT: int = 8001
 

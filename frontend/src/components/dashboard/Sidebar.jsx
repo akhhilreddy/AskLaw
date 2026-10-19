@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   FileText,
+  FileDiff,
+  FolderOpen,
   MessageSquareText,
   MoreHorizontal,
   PanelLeftClose,
@@ -270,6 +272,12 @@ export default function Sidebar({
               className={({ isActive }) => (isActive ? "active" : "")}
             >
               <FileText size={17} /> Documents
+            </NavLink>
+            <NavLink to="/agreements" onClick={onClose} className={({ isActive }) => isActive ? "active" : ""}>
+              <FileDiff size={17} /> Before You Sign
+            </NavLink>
+            <NavLink to="/complaints" onClick={onClose} className={({ isActive }) => isActive ? "active" : ""}>
+              <FolderOpen size={17} /> Complaint Pack
             </NavLink>
             <NavLink
               to="/security"

@@ -75,6 +75,12 @@ LOW_QUALITY_DOMAINS = {
     "twitter.com",
 }
 
+# Treat social/video discovery pages as weaker legal evidence, not as
+# authoritative sources merely because their snippets repeat the question.
+SOCIAL_VIDEO_DOMAINS = LOW_QUALITY_DOMAINS | {
+    "tiktok.com", "youtube.com", "youtu.be", "reddit.com",
+}
+
 
 # ============================================================
 # QUERY SIGNALS
@@ -167,6 +173,11 @@ QUERY_TOPIC_STOPWORDS = {
 
 
 LEGAL_PATTERNS = [
+    r"\baffidavits?\b",
+    r"\b(?:anticipatory\s+)?bail\b",
+    r"\b(?:fir|pocso)\b",
+    r"\b(?:human|fundamental|constitutional)\s+rights?\b",
+    r"\b(?:contracts?|statutes?|legislation)\b",
     r"\barticle\b",
     r"\bsection\b",
     r"\bclause\b",
@@ -290,6 +301,32 @@ def _normalize_domain(url: str) -> str:
         return hostname.lower().removeprefix("www.")
     except Exception:
         return ""
+
+
+def _matches_domain(domain: str, parent: str) -> bool:
+    """Recognize real subdomains, never lookalikes or names in URL paths."""
+    return domain == parent or domain.endswith("." + parent)
+
+
+def _domain_weight(domain: str, weights: dict[str, float]) -> float | None:
+    return next((weight for parent, weight in weights.items()
+                 if _matches_domain(domain, parent)), None)
+
+
+def _is_indian_official(domain: str) -> bool:
+    return (_domain_weight(domain, HIGH_AUTHORITY_DOMAINS) is not None
+            or domain.endswith((".gov.in", ".nic.in")))
+
+
+def _prefers_indian_sources(query: str) -> bool:
+    # AskLaw's default legal context is India. Do not impose that preference
+    # on questions explicitly naming another jurisdiction.
+    foreign = re.search(
+        r"\b(?:australia|australian|united states|usa|u\.s\.|american|"
+        r"united kingdom|uk|england|english law|canada|canadian|"
+        r"south africa|singapore|new zealand)\b", query, re.IGNORECASE,
+    )
+    return _is_legal_query(query) and not foreign
 
 
 # ============================================================
@@ -801,17 +838,6 @@ def _query_relevance(
     return min(score, 1.0)
 
 
-def _topic_tokens(query: str) -> set[str]:
-    """Keep query terms that identify a subject, not just a date or intent."""
-
-    return {
-        token
-        for token in _tokenize(query)
-        if token not in QUERY_TOPIC_STOPWORDS
-        and not (len(token) == 4 and token.isdigit())
-    }
-
-
 def _topic_relevance(
     query: str,
     result: dict,
@@ -824,7 +850,11 @@ def _topic_relevance(
     look highly relevant to the actual topic.
     """
 
-    topic_tokens = _topic_tokens(query)
+    topic_tokens = {
+        token
+        for token in _tokenize(query)
+        if token not in QUERY_TOPIC_STOPWORDS
+    }
 
     if not topic_tokens:
         return 0.0
@@ -867,11 +897,13 @@ def _authority_score(
     if not domain:
         return 0.0
 
-    if domain in HIGH_AUTHORITY_DOMAINS:
-        return HIGH_AUTHORITY_DOMAINS[domain]
+    official_weight = _domain_weight(domain, HIGH_AUTHORITY_DOMAINS)
+    if official_weight is not None:
+        return official_weight
 
-    if domain in LEGAL_RESEARCH_DOMAINS:
-        return LEGAL_RESEARCH_DOMAINS[domain]
+    legal_weight = _domain_weight(domain, LEGAL_RESEARCH_DOMAINS)
+    if legal_weight is not None:
+        return legal_weight
 
     if any(
         domain.endswith(suffix)
@@ -879,7 +911,7 @@ def _authority_score(
     ):
         return 0.82
 
-    if domain in LOW_QUALITY_DOMAINS:
+    if any(_matches_domain(domain, parent) for parent in LOW_QUALITY_DOMAINS):
         return 0.10
 
     return 0.45
@@ -1116,7 +1148,7 @@ def _classify_source_type(
         result.get("url", "")
     )
 
-    if domain in HIGH_AUTHORITY_DOMAINS:
+    if _is_indian_official(domain):
         return (
             "primary",
             0.95,
@@ -1142,7 +1174,7 @@ def _classify_source_type(
 
     if (
         news_hits >= 1
-        or domain in LEGAL_RESEARCH_DOMAINS
+        or _domain_weight(domain, LEGAL_RESEARCH_DOMAINS) is not None
     ):
         return (
             "legal_reporting",
@@ -1175,7 +1207,7 @@ def _primary_source_score(
         result.get("url", "")
     )
 
-    if domain in HIGH_AUTHORITY_DOMAINS:
+    if _is_indian_official(domain):
         return 1.0
 
     if source_type == "primary":
@@ -1397,12 +1429,24 @@ def _score_result(
             0.05 * commentary
         )
 
-        # Topic-mismatched results are filtered before they reach the
-        # answer prompt; this score also separates partially matched hits.
+        # Completely topic-mismatched results are still allowed to pass
+        # through the pipeline, but are strongly demoted.
         if topic_relevance == 0.0:
             final_score *= 0.45
         elif topic_relevance < 0.30:
             final_score *= 0.75
+
+    domain = _normalize_domain(result.get("url", ""))
+    if _is_legal_query(query):
+        if any(_matches_domain(domain, parent) for parent in SOCIAL_VIDEO_DOMAINS):
+            final_score *= 0.35
+        elif _prefers_indian_sources(query) and topic_relevance > 0:
+            # A preference among topical candidates, not a relevance bypass
+            # or an allowlist: other sources remain available as fallbacks.
+            if _is_indian_official(domain):
+                final_score += 0.18
+            elif _domain_weight(domain, LEGAL_RESEARCH_DOMAINS) is not None:
+                final_score += 0.12
 
     final_score = max(
         0.0,
@@ -1595,14 +1639,6 @@ def rank_web_sources(
         )
         for result in cleaned
     ]
-
-    # A search engine can return unrelated results with a successful HTTP
-    # response. Do not present those results as evidence to the user or LLM.
-    if _topic_tokens(query):
-        ranked = [
-            item for item in ranked
-            if item["ranking"]["topic_relevance_score"] > 0
-        ]
 
     ranked.sort(
         key=lambda item: (

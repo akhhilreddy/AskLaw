@@ -9,6 +9,7 @@ db = client[settings.MONGODB_DATABASE]
 user_collection = db["users"]
 conversation_collection = db["conversations"]
 document_collection = db["documents"]
+complaint_collection = db["complaint_cases"]
 auth_code_collection = db["auth_codes"]
 oauth_exchange_collection = db["oauth_exchanges"]
 passkey_collection = db["passkey_credentials"]
@@ -17,6 +18,10 @@ passkey_challenge_collection = db["passkey_challenges"]
 
 def ensure_indexes():
     """Create indexes used by ownership-scoped list and history queries."""
+
+    # Only guest records contain these timestamps; normal records never expire.
+    user_collection.create_index("guest_expires_at", expireAfterSeconds=0, name="guest_users_expiry_ttl")
+    conversation_collection.create_index("guest_expires_at", expireAfterSeconds=0, name="guest_conversations_expiry_ttl")
 
     user_collection.create_index(
         [("email", 1)],
@@ -33,6 +38,9 @@ def ensure_indexes():
     document_collection.create_index(
         [("user_id", 1), ("uploaded_at", -1)],
         name="documents_user_uploaded_at",
+    )
+    complaint_collection.create_index(
+        [("user_id", 1), ("updated_at", -1)], name="complaints_user_updated_at",
     )
     conversation_collection.create_index(
         [("user_id", 1), ("updated_at", -1)],

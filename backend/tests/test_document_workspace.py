@@ -101,6 +101,9 @@ class FakeCollection:
         self.updates.append((query, update))
         return SimpleNamespace(matched_count=1, modified_count=1)
 
+    def update_many(self, query, update):
+        return SimpleNamespace(matched_count=0, modified_count=0)
+
     def delete_one(self, query):
         self.deleted_filters.append(query)
         return SimpleNamespace(deleted_count=1 if self.document else 0)
@@ -234,6 +237,22 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual(result["task_id"], "task-1")
         self.assertEqual(result["filename"], "constitution.pdf")
 
+    def test_enqueue_failure_marks_only_unclaimed_document_failed(self):
+        pages = [SimpleNamespace(extract_text=lambda: "Article 32 provides remedies.")]
+        collection = FakeCollection()
+        upload = SimpleNamespace(file=io.BytesIO(b"%PDF-1.7"), filename="law.pdf", content_type="application/pdf", size=8)
+        with patch.object(document_service, "PdfReader", return_value=SimpleNamespace(pages=pages)), patch.object(document_service, "document_collection", collection), patch.object(document_service.index_document, "delay", side_effect=RuntimeError("secret redis URL")):
+            with self.assertRaises(HTTPException) as failure:
+                document_service.save_uploaded_document(upload, self.user_id)
+        self.assertEqual(failure.exception.status_code, 503)
+        self.assertNotIn("secret", failure.exception.detail)
+        query, update = collection.updates[-1]
+        self.assertEqual(query["user_id"], self.user_id)
+        self.assertEqual(query["status"], "uploaded")
+        self.assertEqual(query["indexing_task_id"], {"$exists": False})
+        self.assertEqual(update["$set"]["failure_code"], "enqueue_failed")
+        self.assertEqual(update["$set"]["status"], "failed")
+
     def test_upload_sanitizes_path_traversal_filename(self):
         pages = [SimpleNamespace(extract_text=lambda: "Article 32 provides remedies.")]
         collection = FakeCollection()
@@ -358,6 +377,11 @@ class DocumentServiceTests(unittest.TestCase):
 
 
 class QdrantIsolationTests(unittest.TestCase):
+    def setUp(self):
+        ready = patch.object(retrieval_service, "ready_document_ids", return_value=["doc-1"])
+        ready.start()
+        self.addCleanup(ready.stop)
+
     def test_delete_filter_contains_user_and_document(self):
         captured = {}
         fake_client = Mock()
@@ -371,7 +395,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["points_selector"].filter.must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("document_id", "doc-1"), ("user_id", "user-1")},
         )
         self.assertTrue(captured["wait"])
@@ -395,7 +419,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["query_filter"].must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("document_id", "doc-1"), ("user_id", "user-1")},
         )
 
@@ -413,7 +437,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["query_filter"].must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("user_id", "user-1")},
         )
 
@@ -448,7 +472,7 @@ class QdrantIsolationTests(unittest.TestCase):
 
         conditions = captured["scroll_filter"].must
         self.assertEqual(
-            {(item.key, item.match.value) for item in conditions},
+            {(item.key, item.match.value) for item in conditions if hasattr(item.match, "value")},
             {("document_id", "doc-1"), ("user_id", "user-1")},
         )
         self.assertEqual(len(results), 1)
@@ -457,6 +481,9 @@ class QdrantIsolationTests(unittest.TestCase):
 
 class IndexingLifecycleTests(unittest.TestCase):
     def setUp(self):
+        cleanup = patch.object(document_tasks, "delete_document_chunks")
+        cleanup.start()
+        self.addCleanup(cleanup.stop)
         self.document_id = str(ObjectId())
         self.document = {
             "_id": ObjectId(self.document_id),
@@ -474,7 +501,7 @@ class IndexingLifecycleTests(unittest.TestCase):
         ), patch.object(document_tasks, "store_chunks", store):
             result = document_tasks.index_document.run(self.document_id, "user-1")
 
-        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        statuses = [update["$set"]["status"] for _, update in collection.updates if "status" in update.get("$set", {})]
         self.assertEqual(statuses, ["processing", "indexed"])
         self.assertEqual(result["chunks_indexed"], 1)
         stored_chunks = store.call_args.args[0]
@@ -496,7 +523,7 @@ class IndexingLifecycleTests(unittest.TestCase):
         finally:
             document_tasks.index_document.max_retries = old_max_retries
 
-        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        statuses = [update["$set"]["status"] for _, update in collection.updates if "status" in update.get("$set", {})]
         self.assertEqual(statuses, ["processing", "failed"])
 
     def test_non_retryable_embedding_failure_skips_task_retry(self):
@@ -514,7 +541,7 @@ class IndexingLifecycleTests(unittest.TestCase):
             with self.assertRaises(vector_service.NonRetryableEmbeddingError):
                 document_tasks.index_document.run(self.document_id, "user-1")
 
-        statuses = [update["$set"]["status"] for _, update in collection.updates]
+        statuses = [update["$set"]["status"] for _, update in collection.updates if "status" in update.get("$set", {})]
         self.assertEqual(statuses, ["processing", "failed"])
         retry.assert_not_called()
 
@@ -649,6 +676,30 @@ class AuthAndChatTests(unittest.TestCase):
         self.assertIn("refresh_token=", deleted_cookie)
         self.assertIn("Max-Age=0", deleted_cookie)
         self.assertIn("Path=/auth", deleted_cookie)
+
+    def test_production_refresh_cookie_supports_cross_site_and_matching_logout(self):
+        from app.api import auth
+
+        for environment in ("production", "prod"):
+            with self.subTest(environment=environment), patch.object(
+                auth.settings, "APP_ENV", environment
+            ), patch.object(auth.settings, "COOKIE_SECURE", True):
+                response = Response()
+                auth.set_refresh_cookie(response, "refresh")
+                cookie = response.headers["set-cookie"]
+                self.assertIn("SameSite=none", cookie)
+                self.assertIn("Secure", cookie)
+                self.assertIn("HttpOnly", cookie)
+                self.assertIn("Path=/auth", cookie)
+
+                logout_response = Response()
+                auth.logout(logout_response)
+                deleted_cookie = logout_response.headers["set-cookie"]
+                self.assertIn("SameSite=none", deleted_cookie)
+                self.assertIn("Secure", deleted_cookie)
+                self.assertIn("HttpOnly", deleted_cookie)
+                self.assertIn("Path=/auth", deleted_cookie)
+                self.assertIn("Max-Age=0", deleted_cookie)
 
     def test_refresh_rejects_missing_invalid_and_deleted_user_sessions(self):
         from app.api import auth

@@ -4,6 +4,7 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 from app.db.mongodb import user_collection
+from app.services.guest_service import ensure_guest_active
 
 
 oauth2_scheme = OAuth2PasswordBearer(
@@ -45,6 +46,8 @@ def get_current_user(
 
         if user is None:
             raise credentials_exception
+
+        ensure_guest_active(user)
 
         if user.get("email_verified") is False:
             raise credentials_exception

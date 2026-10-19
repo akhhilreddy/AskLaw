@@ -1102,6 +1102,63 @@ button:disabled,
   }
 }
 
+.guest-entry { margin-top: 1rem; }
+/* Keep the auth form and its disclaimer in one column, not competing
+   side-by-side for space. Scoped here so the chat disclaimer is unchanged. */
+.auth-form-wrap {
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  gap: 24px;
+}
+.auth-form-wrap > .auth-card {
+  flex: none;
+  min-width: 0;
+}
+.auth-form-wrap > .composer-disclaimer {
+  width: min(100%, 410px);
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.auth-card > .eyebrow {
+  display: block;
+  margin-bottom: 8px;
+}
+.auth-card .oauth-section + .oauth-section {
+  margin-top: 12px;
+}
+.auth-card .google-auth-button,
+.auth-card .passkey-auth-button,
+.auth-card .guest-button {
+  height: auto;
+  min-height: 50px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  line-height: 1.4;
+  font-weight: 650;
+  text-align: center;
+}
+.auth-card .google-auth-button svg,
+.auth-card .passkey-auth-button svg {
+  flex-shrink: 0;
+}
+.auth-card .guest-entry .auth-help {
+  margin: 10px 0 0;
+  line-height: 1.6;
+  text-align: center;
+}
+.availability-notice { margin: .75rem 0; padding: .75rem 1rem; border-left: 3px solid #a58140; background: #fff7e8; color: #65502e; overflow-wrap: anywhere; font-size: .9rem; }
+.availability-notice p { margin: .25rem 0; }
+.guest-button { width: 100%; min-height: 44px; padding: .75rem; border: 1px solid #cbd5df; border-radius: 10px; background: transparent; color: #1b2e42; font: inherit; cursor: pointer; }
+.guest-button:disabled { opacity: .65; cursor: wait; }
+.guest-button:focus-visible, .server-readiness button:focus-visible { outline: 3px solid #a58140; outline-offset: 3px; }
+.server-readiness { position: sticky; top: 0; z-index: 100; padding: .75rem 1rem; background: #fff5dc; color: #453516; text-align: center; font-size: .9rem; }
+.server-readiness button { font: inherit; color: inherit; text-decoration: underline; background: transparent; border: 0; cursor: pointer; min-height: 44px; }
+.guest-notice { padding: .75rem 1rem; background: #f4f6f8; color: #42556a; font-size: .85rem; }
+
 @media (prefers-reduced-motion: reduce) {
   .field input,
   .sidebar,

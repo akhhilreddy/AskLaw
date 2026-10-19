@@ -57,6 +57,10 @@ from app.services.passkey_service import (
     list_passkeys as list_user_passkeys,
 )
 from app.utils.security import create_token
+from app.core.rate_limit import limit_guest, limit_login, limit_signup
+from app.services.guest_service import (
+    create_guest_user, ensure_guest_active, require_registered_user, GUEST_CHAT_LIMIT,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -75,7 +79,8 @@ def require_trusted_origin(request: Request):
     api_origin = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
 
     # Non-browser clients may omit Origin. Browser POST requests include it,
-    # and SameSite=Lax remains a second line of defense for the cookie itself.
+    # Cross-site production refresh cookies use SameSite=None, so retain this
+    # explicit trusted-origin check rather than relying on SameSite alone.
     if origin and origin.rstrip("/") not in {
         *settings.cors_origins,
         api_origin,
@@ -86,15 +91,20 @@ def require_trusted_origin(request: Request):
         )
 
 
-def set_refresh_cookie(response: Response, refresh_token: str):
-    lifetime = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+def refresh_cookie_samesite() -> str:
+    # Netlify and Render are different sites. Keep localhost behavior unchanged.
+    return "none" if settings.APP_ENV.lower() in {"prod", "production"} else "lax"
+
+
+def set_refresh_cookie(response: Response, refresh_token: str, lifetime=None):
+    lifetime = lifetime or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=refresh_token,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=refresh_cookie_samesite(),
         path=REFRESH_COOKIE_PATH,
         max_age=int(lifetime.total_seconds()),
         expires=datetime.now(timezone.utc) + lifetime,
@@ -116,6 +126,31 @@ def _ensure_verified(user: dict) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Verify your email before signing in",
         )
+
+
+@router.post("/guest", dependencies=[Depends(require_trusted_origin), Depends(limit_guest)])
+def guest_login(response: Response, refresh_token: str | None = Cookie(default=None)):
+    # Reuse an active guest session: clicking again must not reset its quota.
+    user = None
+    if refresh_token:
+        try:
+            payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            if payload.get("token_type") == "refresh":
+                candidate = user_collection.find_one({"email": payload.get("sub")})
+                if candidate and candidate.get("is_guest") and payload.get("auth_version") == candidate.get("auth_version"):
+                    ensure_guest_active(candidate)
+                    user = candidate
+        except (JWTError, HTTPException):
+            pass
+    user = user or create_guest_user()
+    lifetime = user["guest_expires_at"].replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)
+    payload = _token_payload(user)
+    access_token = create_token({**payload, "token_type": "access"}, lifetime)
+    refresh = create_token({**payload, "token_type": "refresh"}, lifetime)
+    set_refresh_cookie(response, refresh, lifetime=lifetime)
+    return {"access_token": access_token, "token_type": "bearer",
+            "is_guest": True, "expires_at": user["guest_expires_at"],
+            "questions_remaining": max(0, GUEST_CHAT_LIMIT - user.get("guest_chat_count", 0))}
 
 
 def _google_frontend_redirect(**parameters: str) -> str:
@@ -228,6 +263,7 @@ def google_exchange(payload: GoogleExchangeRequest, response: Response):
     dependencies=[Depends(require_trusted_origin)],
 )
 def passkey_registration_options(current_user=Depends(get_current_user)):
+    require_registered_user(current_user)
     return begin_passkey_registration(current_user)
 
 
@@ -240,6 +276,7 @@ def passkey_registration_verify(
     payload: PasskeyRegistrationVerifyRequest,
     current_user=Depends(get_current_user),
 ):
+    require_registered_user(current_user)
     try:
         return complete_passkey_registration(
             current_user,
@@ -313,7 +350,7 @@ def delete_passkey(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/signup", status_code=status.HTTP_201_CREATED)
+@router.post("/signup", status_code=status.HTTP_201_CREATED, dependencies=[Depends(limit_signup)])
 def signup(user: SignUpRequest):
     email = str(user.email)
     existing_user = user_collection.find_one({"email": email})
@@ -483,7 +520,7 @@ def reset_password(payload: ResetPasswordRequest):
 
 @router.post(
     "/login",
-    dependencies=[Depends(require_trusted_origin)],
+    dependencies=[Depends(require_trusted_origin), Depends(limit_login)],
 )
 def login(user: UserLogin,response : Response):
 
@@ -521,7 +558,7 @@ def login(user: UserLogin,response : Response):
 
 @router.post(
     "/token",
-    dependencies=[Depends(require_trusted_origin)],
+    dependencies=[Depends(require_trusted_origin), Depends(limit_login)],
 )
 def login_swagger(
     response: Response,
@@ -602,6 +639,7 @@ def refresh_access_token(
             )
 
         _ensure_verified(existing_user)
+        ensure_guest_active(existing_user)
         user_auth_version = existing_user.get("auth_version")
         if (
             user_auth_version is not None
@@ -628,10 +666,14 @@ def refresh_access_token(
 
 @router.get("/me")
 def get_me(current_user = Depends(get_current_user)):
-    return {
+    result = {
         "name": current_user["name"],
         "email": current_user["email"]
     }
+    if current_user.get("is_guest"):
+        result.update(is_guest=True, expires_at=current_user["guest_expires_at"],
+                      questions_remaining=max(0, GUEST_CHAT_LIMIT - current_user.get("guest_chat_count", 0)))
+    return result
 
 @router.post(
     "/logout",
@@ -643,7 +685,7 @@ def logout(response: Response):
         path=REFRESH_COOKIE_PATH,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite=refresh_cookie_samesite(),
     )
 
     return {

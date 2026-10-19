@@ -33,6 +33,18 @@ def create_celery_app(
         "accept_content": ["json"],
         "timezone": "UTC",
         "enable_utc": True,
+        "broker_connection_timeout": 3,
+        "broker_transport_options": {
+            "socket_connect_timeout": 3,
+            "socket_timeout": 3,
+            "retry_on_timeout": False,
+        },
+        "task_publish_retry_policy": {
+            "max_retries": 1, "interval_start": 0, "interval_step": 0, "interval_max": 0,
+        },
+        "redis_socket_connect_timeout": 3,
+        "redis_socket_timeout": 3,
+        "redis_retry_on_timeout": False,
     }
 
     broker_tls = _redis_tls_options(broker_url)

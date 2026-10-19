@@ -8,6 +8,7 @@ import { login } from "../../services/authService";
 import GoogleAuthButton from "../../components/auth/GoogleAuthButton";
 import PasskeyAuthButton from "../../components/auth/PasskeyAuthButton";
 import { isPasskeySupported } from "../../services/passkeyService";
+import GuestAuthButton from "../../components/auth/GuestAuthButton";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -79,6 +80,7 @@ export default function Login() {
         </form>
         <PasskeyAuthButton />
         <GoogleAuthButton showDivider={!isPasskeySupported()} />
+        <GuestAuthButton />
         <div className="auth-switch">New to AskLAW? <Link className="text-link" to="/signup">Create an account</Link></div>
       </Card>
     </AuthLayout>

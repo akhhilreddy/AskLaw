@@ -11,6 +11,8 @@ from app.tasks.document_tasks import (
     index_document,
 )
 from app.services.vector_service import delete_document_chunks
+from app.services.document_lifecycle import recover_stale_documents, cleanup_failed_document
+from app.services.agreement_documents import capture_pages
 
 
 # =========================================================
@@ -81,7 +83,9 @@ def get_owned_document(
     except Exception:
         return None
 
-    return document_collection.find_one(
+    recover_stale_documents(document_collection, user_id)
+
+    record = document_collection.find_one(
         {
             "_id": object_id,
             "user_id": user_id,
@@ -89,8 +93,12 @@ def get_owned_document(
         {
             "filename": 1,
             "status": 1,
+            "vector_cleanup_pending": 1,
         },
     )
+    if record:
+        cleanup_failed_document(document_collection, record, user_id, delete_document_chunks)
+    return record
 
 
 # =========================================================
@@ -100,6 +108,7 @@ def get_owned_document(
 def get_user_documents(
     user_id: str,
 ):
+    recover_stale_documents(document_collection, user_id)
     document_collection.update_many(
         {
             "user_id": user_id,
@@ -126,6 +135,8 @@ def get_user_documents(
             "chunk_count": 1,
             "status": 1,
             "uploaded_at": 1,
+            "failure_code": 1,
+            "vector_cleanup_pending": 1,
         },
     ).sort(
         [
@@ -137,6 +148,7 @@ def get_user_documents(
     results = []
 
     for document in documents:
+        cleanup_failed_document(document_collection, document, user_id, delete_document_chunks)
         content = document.get(
             "content",
             "",
@@ -174,6 +186,9 @@ def get_user_documents(
                 "uploaded_at"
             ]
 
+        if document.get("failure_code"):
+            item["failure_code"] = document["failure_code"]
+
         results.append(
             item
         )
@@ -198,6 +213,8 @@ def delete_owned_document(
         object_id = ObjectId(document_id)
     except Exception:
         return None
+
+    recover_stale_documents(document_collection, user_id)
 
     document = document_collection.find_one(
         {
@@ -322,6 +339,7 @@ def save_uploaded_document(
     # -----------------------------------------------------
 
     full_text_parts = []
+    extracted_pages = []
     all_chunks = []
     extracted_text_bytes = 0
 
@@ -353,6 +371,7 @@ def save_uploaded_document(
             full_text_parts.append(
                 page_text
             )
+            extracted_pages.append({"page_number": page_number, "text": page_text})
 
         page_chunks = create_page_chunks(
             text=page_text,
@@ -427,6 +446,7 @@ def save_uploaded_document(
             timezone.utc
         ),
     }
+    document.update(capture_pages(filename, len(reader.pages), extracted_pages))
 
     result = document_collection.insert_one(
         document
@@ -444,10 +464,21 @@ def save_uploaded_document(
     # SEND BACKGROUND INDEXING TASK
     # -----------------------------------------------------
 
-    task = index_document.delay(
-        document_id,
-        user_id,
-    )
+    try:
+        task = index_document.delay(document_id, user_id)
+    except Exception:
+        # A publish may be ambiguous (accepted but acknowledgement lost).
+        # Only fail an unclaimed upload; never overwrite a worker's live claim.
+        result = document_collection.update_one(
+            {"_id": result.inserted_id, "user_id": user_id, "status": "uploaded",
+             "indexing_task_id": {"$exists": False}},
+            {"$set": {"status": "failed", "failure_code": "enqueue_failed",
+                      "failed_at": datetime.now(timezone.utc)}},
+        )
+        detail = ("The indexing queue is temporarily unavailable. Your document was not queued. "
+                  "Delete the failed upload and try uploading again shortly.") if result.matched_count else (
+                  "The indexing queue did not confirm submission. Check your document library before uploading again.")
+        raise HTTPException(status_code=503, detail=detail) from None
 
     # -----------------------------------------------------
     # RESPONSE

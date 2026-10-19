@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { applyResearchEvent, emptyResearchStatus, conversationHistory, finishResearchMessages } from "../components/dashboard/researchStatus";
 
 import {
   streamMessage,
@@ -23,6 +24,7 @@ import {
 export default function useChat({
   documentId = null,
 } = {}) {
+  const streamRun = useRef(null);
 
   const [conversation, setConversation] =
     useState({
@@ -92,6 +94,8 @@ export default function useChat({
   const sendMessage = async (
     message
   ) => {
+    const runId = Symbol("chat-stream");
+    streamRun.current = runId;
 
     let conversationId =
       conversation.id;
@@ -141,17 +145,7 @@ export default function useChat({
 
       const conversationContext = [
 
-        ...conversation.messages
-          .slice(-12)
-          .map(
-            ({
-              role,
-              content,
-            }) => ({
-              role,
-              content,
-            })
-          ),
+        ...conversationHistory(conversation.messages),
 
         {
           role: "user",
@@ -256,6 +250,7 @@ export default function useChat({
       // Store verification metadata
       let assistantVerification =
         null;
+      let assistantResearch = emptyResearchStatus();
 
 
       // -----------------------------------------------
@@ -301,6 +296,7 @@ export default function useChat({
                 // NEW
                 verification:
                   assistantVerification,
+                ...assistantResearch,
 
                 isComplete: false,
               },
@@ -342,6 +338,7 @@ export default function useChat({
                         // NEW
                         verification:
                           assistantVerification,
+                        ...assistantResearch,
                       }
                     : msg
               ),
@@ -360,6 +357,13 @@ export default function useChat({
         conversationContext,
 
         (event) => {
+          if (streamRun.current !== runId) return;
+          assistantResearch = applyResearchEvent(assistantResearch, event);
+          if (["progress", "availability"].includes(event.type)) {
+            createAssistantMessage();
+            updateAssistantMessage();
+            return;
+          }
 
           // -------------------------------------------
           // TOKEN EVENT
@@ -470,6 +474,7 @@ export default function useChat({
         },
 
         documentId,
+        conversationId,
 
       );
 
@@ -492,6 +497,7 @@ export default function useChat({
                         ...msg,
 
                         isComplete: true,
+                        progress: "",
                       }
                     : msg
               ),
@@ -511,7 +517,8 @@ export default function useChat({
         await addMessage(
           conversationId,
           "assistant",
-          assistantResponse
+          assistantResponse,
+          assistantResearch.availability_receipt,
         );
 
       }
@@ -523,7 +530,7 @@ export default function useChat({
     } catch (error) {
 
       if (
-        error.name !==
+        streamRun.current === runId && error.name !==
         "AbortError"
       ) {
 
@@ -570,10 +577,14 @@ export default function useChat({
 
 
     } finally {
+      if (streamRun.current === runId) {
+        streamRun.current = null;
+        setConversation(previous => ({ ...previous, messages: finishResearchMessages(previous.messages) }));
 
       setIsTyping(false);
 
       setIsStreaming(false);
+      }
 
     }
 
@@ -585,6 +596,8 @@ export default function useChat({
   // =====================================================
 
   const stop = () => {
+    streamRun.current = null;
+    setConversation(previous => ({ ...previous, messages: finishResearchMessages(previous.messages) }));
 
     stopStreaming();
 
@@ -601,6 +614,7 @@ export default function useChat({
 
   const createConversation =
     async () => {
+      streamRun.current = null;
 
       stopStreaming();
 
@@ -651,6 +665,7 @@ export default function useChat({
   const loadConversation = async (
     conversationId
   ) => {
+    streamRun.current = null;
 
     stopStreaming();
 
