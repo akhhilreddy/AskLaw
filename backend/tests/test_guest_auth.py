@@ -124,7 +124,7 @@ class GuestDemoTests(unittest.TestCase):
             response = chat.chat_stream(request, guest)
             self.assertEqual(response.status_code, 200)
             quota.assert_called_once_with(guest)
-            stream.assert_called_once_with(request.messages, str(guest["_id"]), None)
+            stream.assert_called_once_with(request.messages, str(guest["_id"]), None, request_id=response.headers["X-Request-ID"])
             stream.reset_mock()
             quota.side_effect = HTTPException(429, "Guest quota exhausted")
             with self.assertRaises(HTTPException) as failure:

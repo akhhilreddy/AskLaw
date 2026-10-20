@@ -39,6 +39,9 @@
 import asyncio
 import json
 import logging
+from uuid import uuid4
+import httpx
+from app.services.generation_runtime import generation_pool, GenerationBusy, GenerationTimeout
 from app.services.availability import NOTICE_MESSAGES, sign_availability
 from app.services.retrieval_events import retrieval_events
 
@@ -84,7 +87,9 @@ logger = logging.getLogger(__name__)
 # =========================================================
 
 client = Groq(
-    api_key=settings.GROQ_API_KEY
+    api_key=settings.GROQ_API_KEY,
+    max_retries=0,
+    timeout=httpx.Timeout(settings.GROQ_REQUEST_TIMEOUT_SECONDS, connect=5),
 )
 
 
@@ -325,6 +330,7 @@ def stream_response(
     user_id=None,
     document_id=None,
     conversation_id=None,
+    request_id=None,
 ):
     """
     Complete AskLaw response pipeline.
@@ -346,6 +352,7 @@ def stream_response(
     # FIND USER QUESTION
     # =====================================================
 
+    request_id = request_id or uuid4().hex
     user_message = (
         _get_latest_user_message(
             messages
@@ -585,94 +592,53 @@ def stream_response(
     # CALL GROQ
     # =====================================================
 
-    try:
-
-        stream = (
-            client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=groq_messages,
-                temperature=0.2,
-                max_completion_tokens=2048,
-                stream=True,
-            )
+    def create_provider_stream(timeout):
+        return client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=groq_messages,
+            temperature=0.2,
+            max_completion_tokens=2048,
+            stream=True,
+            timeout=timeout,
         )
-
-    except Exception as exc:
-        logger.exception("AI provider request failed")
-
-        error_event = {
-            "type": "error",
-            "content": (
-                "The AI service is temporarily unavailable. Please try again."
-            ),
-        }
-
-        yield (
-            json.dumps(
-                error_event
-            )
-            + "\n"
-        )
-
-        return
 
     # =====================================================
     # STREAM GROQ TOKENS
     # =====================================================
 
     generated_answer_parts = []
-
+    logger.info("generation request_id=%s phase=start", request_id)
+    provider_events = generation_pool.events(
+        create_provider_stream,
+        budget=settings.GROQ_GENERATION_DEADLINE_SECONDS,
+        request_timeout=settings.GROQ_REQUEST_TIMEOUT_SECONDS,
+        max_retry_wait=settings.GROQ_MAX_RETRY_WAIT_SECONDS,
+        request_id=request_id,
+    )
     try:
-
-        for chunk in stream:
-
-            if not chunk.choices:
-                continue
-
-            content = (
-                chunk
-                .choices[0]
-                .delta
-                .content
-            )
-
-            if not content:
-                continue
-
-            generated_answer_parts.append(
-                content
-            )
-
-            token_event = {
-                "type": "token",
-                "content": content,
-            }
-
-            yield (
-                json.dumps(
-                    token_event
-                )
-                + "\n"
-            )
-
+        for event in provider_events:
+            if event["type"] == "token":
+                generated_answer_parts.append(event["content"])
+            yield json.dumps(event) + "\n"
     except Exception as exc:
-        logger.exception("AI response streaming failed")
-
-        error_event = {
-            "type": "error",
-            "content": (
-                "The response stream was interrupted. Please try again."
-            ),
-        }
-
-        yield (
-            json.dumps(
-                error_event
-            )
-            + "\n"
-        )
-
+        if isinstance(exc, GenerationBusy):
+            category = "busy"
+        elif isinstance(exc, (GenerationTimeout, httpx.TimeoutException)):
+            category = "timeout"
+        else:
+            category = "interrupted" if generated_answer_parts else "unavailable"
+        logger.warning("generation request_id=%s phase=failed status=%s", request_id, category)
+        message = {
+            "busy": "The AI service is busy or rate-limited. Please try again shortly.",
+            "timeout": "The AI response timed out. Please try again shortly.",
+            "interrupted": "The response stream was interrupted. Please try again.",
+            "unavailable": "The AI service is temporarily unavailable. Please try again.",
+        }[category]
+        yield json.dumps({"type": "error", "code": "generation_" + category, "content": message}) + "\n"
         return
+    finally:
+        provider_events.close()
+        logger.info("generation request_id=%s phase=closed", request_id)
 
     # =====================================================
     # FULL GENERATED ANSWER
@@ -807,7 +773,7 @@ def stream_response(
     )
 
     logger.info(
-        "AI response completed route=%s sources=%s claims=%s grounding_score=%s",
+        "AI response completed route=%s sources=%s claims=%s grounding_score=%s request_id=%s",
         route,
         len(sources),
         (
@@ -816,4 +782,5 @@ def stream_response(
             else 0
         ),
         grounding_score,
+        request_id,
     )

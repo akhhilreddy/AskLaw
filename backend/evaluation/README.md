@@ -244,3 +244,10 @@ successful rows already contain it. Full checks now pass **307 backend + 41
 frontend tests (348 total)**, lint, build and compile checks at that stage.
 Runtime application, environment and deployment configuration had not changed
 when those diagnostic measurements were made.
+
+Subsequently approved local generation hardening is described in
+[stream-diagnosis.md](stream-diagnosis.md#local-generation-hardening-not-yet-deployed).
+It now passes **320 backend + 42 frontend tests (362 total)**, lint/build/compile
+checks, including deterministic 429/deadline/disconnect tests. It has not been
+deployed or live-benchmarked. Earlier artifacts remain unchanged; do not claim
+they demonstrate the new retry/progress policy's production behavior.

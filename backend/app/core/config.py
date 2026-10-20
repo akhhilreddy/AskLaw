@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     TAVILY_TIMEOUT_SECONDS: float = Field(default=12, gt=0, le=30)
     SEARXNG_READINESS_BUDGET_SECONDS: float = Field(default=50, gt=0, le=120)
     RESEARCH_DEADLINE_SECONDS: float = Field(default=75, gt=0, le=180)
+    GROQ_GENERATION_DEADLINE_SECONDS: float = Field(default=60, gt=0, le=120)
+    GROQ_REQUEST_TIMEOUT_SECONDS: float = Field(default=15, gt=0, le=60)
+    GROQ_MAX_RETRY_WAIT_SECONDS: float = Field(default=30, ge=0, le=60)
     SEARXNG_IDLE_REPROBE_SECONDS: float = Field(default=600, gt=0)
     MCP_HOST: str = "127.0.0.1"
     MCP_PORT: int = 8001

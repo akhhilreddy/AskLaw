@@ -10,6 +10,17 @@ test("cold-start progress appears and survives heartbeat, then clears on readine
   assert.equal(applyResearchEvent(state, { type: "progress", code: "web_ready" }).progress, "");
 });
 
+test("provider waits use allowlisted UI text and clear when answer starts", () => {
+  let state = applyResearchEvent(emptyResearchStatus(), { type: "progress", code: "provider_pending", message: "private provider error" });
+  assert.equal(state.progress, "Preparing your answer…");
+  state = applyResearchEvent(state, { type: "progress", code: "provider_retrying" });
+  assert.equal(state.progress, "AI service is busy; waiting to retry…");
+  assert.equal(applyResearchEvent(state, { type: "token", content: "answer" }).progress, "");
+  assert.equal(applyResearchEvent(state, { type: "error" }).progress, "");
+  assert.equal(applyResearchEvent(state, { type: "stop" }).progress, "");
+  assert.equal(applyResearchEvent(state, { type: "progress", code: "unknown", message: "secret" }).progress, state.progress);
+});
+
 test("outage differs from empty results and provider-controlled text is discarded", () => {
   const state = applyResearchEvent(emptyResearchStatus(), { type: "availability", notices: [
     { type: "web_unavailable", url: "https://private-provider?q=secret", message: "private body" },

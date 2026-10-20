@@ -12,6 +12,8 @@ export const emptyResearchStatus = () => ({ progress: "", availability_notices: 
 
 export function applyResearchEvent(state, event) {
   if (event.type === "progress") {
+    if (event.code === "provider_pending") return { ...state, progress: "Preparing your answer…" };
+    if (event.code === "provider_retrying") return { ...state, progress: "AI service is busy; waiting to retry…" };
     if (event.code === "web_waking") return { ...state, progress: "Waking up web search…" };
     if (event.code === "research_pending") return { ...state, progress: state.progress || "Researching…" };
     if (["web_ready", "web_unavailable"].includes(event.code)) return { ...state, progress: "" };

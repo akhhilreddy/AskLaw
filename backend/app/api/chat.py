@@ -28,16 +28,23 @@ from app.core.rate_limit import limit_chat
 from app.services.conversation_service import get_conversation
 import anyio
 from starlette.concurrency import run_in_threadpool
+import logging
+from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 
 class ClosingStreamingResponse(StreamingResponse):
-    def __init__(self, body, **kwargs):
+    def __init__(self, body, request_id=None, **kwargs):
         self.iterator = body
+        self.request_id = request_id or uuid4().hex
         super().__init__(body, **kwargs)
 
     async def __call__(self, scope, receive, send):
+        status = "interrupted"
         try:
             await super().__call__(scope, receive, send)
+            status = "closed"
         finally:
             # Closing the sync generator cancels its retrieval task promptly.
             # Run this off the ASGI loop, and shield cleanup from disconnect.
@@ -45,6 +52,7 @@ class ClosingStreamingResponse(StreamingResponse):
                 close = getattr(self.iterator, "close", None)
                 if close:
                     await run_in_threadpool(close)
+            logger.info("chat_stream request_id=%s phase=transport status=%s", self.request_id, status)
 
 
 router = APIRouter()
@@ -101,12 +109,15 @@ def chat_stream(
     # -----------------------------------------------------
 
     consume_guest_question(current_user)
+    request_id = uuid4().hex
     if request.conversation_id:
         body = stream_response(request.messages, user_id, request.document_id,
-                               conversation_id=request.conversation_id)
+                               conversation_id=request.conversation_id, request_id=request_id)
     else:
-        body = stream_response(request.messages, user_id, request.document_id)
+        body = stream_response(request.messages, user_id, request.document_id, request_id=request_id)
     return ClosingStreamingResponse(
         body,
+        request_id=request_id,
+        headers={"X-Request-ID": request_id},
         media_type="application/x-ndjson",
     )

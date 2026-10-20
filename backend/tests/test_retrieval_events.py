@@ -10,9 +10,35 @@ from app.services.research_runtime import progress
 from app.services.retrieval_events import retrieval_events
 from app.schemas.chat import ChatMessage
 from app.api.chat import ClosingStreamingResponse
+from starlette.requests import ClientDisconnect
 
 
 class RetrievalEventTests(unittest.TestCase):
+    def test_asgi_disconnect_cancels_provider_worker_and_logs_correlation(self):
+        from types import SimpleNamespace
+        closed = threading.Event()
+        def chunks():
+            try:
+                while True:
+                    yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="partial"))])
+            finally:
+                closed.set()
+        async def send(event):
+            if event["type"] == "http.response.body":
+                raise OSError("private transport error")
+        async def receive():
+            return {"type": "http.disconnect"}
+        async def exercise():
+            response = ClosingStreamingResponse(ai_service.stream_response([ChatMessage(role="user", content="hello")], "owner", request_id="fixture-correlation"), request_id="fixture-correlation", media_type="application/x-ndjson")
+            with self.assertRaises(ClientDisconnect):
+                await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        with patch.object(ai_service.client.chat.completions, "create", return_value=chunks()), self.assertLogs("app.api.chat", level="INFO") as logs:
+            asyncio.run(exercise())
+        self.assertTrue(closed.wait(1))
+        self.assertIn("fixture-correlation", str(logs.output))
+        self.assertIn("interrupted", str(logs.output))
+        self.assertNotIn("private", str(logs.output))
+
     def test_iterator_can_resume_on_different_streaming_worker_threads(self):
         async def retrieval():
             progress("web_waking")

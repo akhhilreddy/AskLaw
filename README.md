@@ -54,7 +54,7 @@ As of 20 October 2026:
 - Research chat, email/Google/passkey authentication, guest entry, Tavily search and Before You Sign have previously been reported working in the public demo.
 - Complaint Pack was developed on `codex/consumer-complaint-pack` and integrated into `codex/guest-demo-experience` as `aaaf010`. The maintainer subsequently confirmed deployment and the in-page confirmation fix (`56bc488`) working live. This is maintainer-reported acceptance, not a new independent production audit.
 - The tested application was promoted in order: **`codex/guest-demo-experience` → `deployment` → `main`**. `deployment` was fast-forwarded to `56bc488`; `main` preserves its earlier documentation history through a merge, resolving the README against the current implementation. Git promotion does not change which branch Netlify or Render is configured to deploy.
-- Latest regression checks pass: **307 backend tests, 41 frontend tests**, lint, production build and compile checks. The backend count includes 15 benchmark-accounting and four stream-diagnostic tests; desktop/mobile Complaint Pack workflows were also checked on 19 October. Small live measurements include both successes and failures; functional test success must not be confused with live reliability. See [measured metrics](#measured-metrics-and-résumé-claims).
+- Latest regression checks pass: **320 backend tests, 42 frontend tests**, lint, production build and compile checks. The backend count includes 15 benchmark-accounting, four stream-diagnostic and 12 generation-runtime tests; desktop/mobile Complaint Pack workflows were also checked on 19 October. Small live measurements include both successes and failures; functional test success must not be confused with live reliability. See [measured metrics](#measured-metrics-and-résumé-claims).
 
 This status records repository changes and user-confirmed deployment, not an automatic check that every production service is running the same commit. No credentials, environment files or hosting settings were changed during branch promotion. The discarded scenario/playbook experiment is not part of this release.
 
@@ -246,6 +246,7 @@ The backend settings are defined in [`backend/app/core/config.py`](backend/app/c
 | Qdrant | `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_NAME` | Vector collection and hosted Qdrant authentication |
 | Embeddings | `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `GEMINI_API_KEY`, `GEMINI_EMBEDDING_BATCH_SIZE` | Local or Gemini provider and batch size |
 | Chat and optional intake | `GROQ_API_KEY` | Research generation and consent-gated complaint extraction; Complaint Pack save/build/export remain deterministic |
+| Chat generation bounds | `GROQ_GENERATION_DEADLINE_SECONDS`, `GROQ_REQUEST_TIMEOUT_SECONDS`, `GROQ_MAX_RETRY_WAIT_SECONDS` | Code defaults: 60-second generation budget, 15-second network-phase timeout, 30-second retry-wait cap; no environment edits required |
 | Celery | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis broker and result backend; TLS is configured for `rediss://` URLs |
 | Web search | `WEB_SEARCH_PROVIDER`, `TAVILY_API_KEY`, `TAVILY_MAX_QUERIES`, `TAVILY_TIMEOUT_SECONDS`, `SEARXNG_URL` | Provider selection; Tavily defaults to at most 2 queries and a 12-second per-search cap; SearXNG endpoint ends in `/search` |
 | Retrieval budgets | `RESEARCH_DEADLINE_SECONDS`, `SEARXNG_READINESS_BUDGET_SECONDS`, `SEARXNG_IDLE_REPROBE_SECONDS` | Defaults: 75-second overall retrieval cap, optional SearXNG 50-second readiness window and 600-second idle re-probe |
@@ -350,8 +351,8 @@ The backend suite covers authentication/guest gates, ownership, indexing failure
 
 | Check | Result |
 | --- | --- |
-| Backend isolated suite | 307 passed (including 15 benchmark-accounting and four stream-diagnostic tests) |
-| Frontend Node suite | 41 passed |
+| Backend isolated suite | 320 passed (including 15 benchmark-accounting, four stream-diagnostic and 12 generation-runtime tests) |
+| Frontend Node suite | 42 passed |
 | ESLint, Vite production build | Passed; existing JavaScript chunk-size warning (over 500 kB) |
 | Python compile checks, `git diff --check` | Passed |
 | Complaint browser regressions at 1440 px and 390 px (19 October) | Six runs passed, with no page errors or horizontal overflow; these predate the separate 20 October readiness-banner change |
@@ -401,7 +402,7 @@ Evidence: [19 October report](backend/evaluation/results/2026-10-19-live-resume.
 
 | Metric | Observed result | Interpretation |
 | --- | --- | --- |
-| Automated tests (20 October) | **348 passed: 307 backend + 41 frontend** | Includes benchmark accounting, controlled provider failures and readiness checks; not a production accuracy/success rate |
+| Automated tests (20 October) | **362 passed: 320 backend + 42 frontend** | Includes benchmark accounting, controlled provider failures, retry/deadline/disconnect and progress checks; not a production accuracy/success rate |
 | Deployed web answer-with-sources completion (19 October) | **3/5 attempts (60%)** | Two request failures retained; no uptime or reliability SLA implied |
 | First answer chunk, successful web requests only (19 October) | **Median 7.178 s**, range 6.197–27.157 s; **n=3** | After health preflight; client/network + API/provider time, not browser rendering or controlled cold-start timing |
 | Complete web stream, successful requests only (19 October) | **Median 7.506 s**, range 7.121–29.966 s; **n=3** | Read alongside the two failures, not as a five-request latency guarantee |
@@ -444,11 +445,22 @@ Maintainer-supplied server logs show successful five-source retrieval followed b
 Groq 429 responses with SDK retry waits of **7, 24 and 29 seconds**. These explain
 part of the long response times, not the exact client delivery interruption.
 Server-side generation completion is not proof of successful client delivery.
-
+Subsequent local hardening disables hidden chat SDK retries, allows at most one
+explicit pre-stream retry, honors `Retry-After` only when its full wait fits the
+cap/budget, and emits progress during provider waits. Generation has a 60-second
+controller deadline and two bounded worker slots per API process. Cancellation
+stops retry waits, discards late results and releases a slot only after its worker
+exits. A blocked synchronous call cannot be forcibly killed; finite HTTP timeouts
+and retained slots bound that risk. Requests encountering a full pool receive a
+clear busy error. This is not horizontal scaling or a provider-quota increase.
+Server-generated request IDs correlate response headers, generation and transport
+logs without logging prompts, answers or provider errors. These changes have
+passed local fault/regression tests but are **not deployed or live-benchmarked**;
+the earlier performance artifacts and failures remain unchanged.
 
 Defensible résumé wording, with the small benchmark boundary kept explicit:
 
-> Built and tested a legal research and document workspace with **348 automated
+> Built and tested a legal research and document workspace with **362 automated
 > tests**, covering authentication, owner-scoped retrieval, streaming/fallbacks,
 > agreement comparison and source-linked consumer-complaint preparation.
 

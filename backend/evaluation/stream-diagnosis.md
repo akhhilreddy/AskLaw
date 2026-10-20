@@ -63,10 +63,43 @@ so matches below use sequence and metadata rather than unique request identity.
   wait is not by itself proof of a proxy idle timeout: the client also received
   partial tokens afterwards.
 
-Next approved work: bounded generation retries/deadline, provider-wait progress,
-disconnect-safe cleanup and sanitized request correlation. Runtime implementation
-will be committed separately from these measurements. No performance improvement
-is claimed from the diagnostic reproduction.
+The following work was subsequently approved and implemented locally. It has not
+been deployed, so it does not explain or replace the earlier live outcomes.
+
+## Local generation hardening (not yet deployed)
+
+- Existing chat model, prompt, token cap, retrieval and ownership checks unchanged.
+  Complaint intake retains its own existing Groq client and behavior.
+- Chat SDK automatic retries disabled. At most one explicit retry for pre-stream
+  HTTP 429/500/502/503/504. Numeric/HTTP-date `Retry-After` (or milliseconds) is
+  honored in full, with a one-second minimum; absent/invalid values use one second.
+  If the wait exceeds the 30-second cap or remaining generation budget, return a
+  sanitized busy error. No retry after partial tokens, to avoid duplicate answers.
+- Code settings: `GROQ_GENERATION_DEADLINE_SECONDS=60`,
+  `GROQ_REQUEST_TIMEOUT_SECONDS=15`, `GROQ_MAX_RETRY_WAIT_SECONDS=30` defaults.
+  No `.env`, deployment file or hosting setting edited. The generation deadline
+  starts after retrieval; the existing 75-second retrieval cap remains separate.
+  The 15-second timeout applies to network phases, not the whole request; the
+  stream controller enforces the separate 60-second total generation cap.
+- One-second progress while waiting for the provider/retry. Frontend uses only
+  allowlisted text, clearing it on token/error/Stop; no provider text becomes UI
+  status or evidence/history. The final route still marks successful completion.
+- Two daemon generation worker slots per process, no unbounded pending queue;
+  each stream has a 32-event buffer. Caller timeout/disconnect sets cancellation,
+  interrupts retry waits and discards late results. A running synchronous network
+  call cannot be forcibly terminated: its slot is retained until that worker
+  finishes and closes its stream. New requests fail busy rather than creating
+  more workers while those slots are occupied. This is resource bounding, not a
+  claim that any synchronous socket can be killed precisely at the deadline.
+- Server-generated `X-Request-ID` correlates chat generation and transport
+  lifecycle logs. New diagnostics accept only 32 lowercase hex characters from
+  that header. Log fields are fixed phases, safe status/counters/wait durations
+  and generated IDs; no prompts, user IDs, provider URLs/bodies or tokens.
+  HTTPX INFO records for the Groq endpoint are filtered out.
+- Twelve generation-runtime tests plus ASGI provider-disconnect and UI progress
+  coverage check retry budgets, timeout, worker retention, cancellation, cleanup,
+  safe logs and non-duplication. Full local suite: **320 backend + 42 frontend**,
+  lint, build and compile checks. No new live performance claim is made.
 
 ## Reproduction
 
