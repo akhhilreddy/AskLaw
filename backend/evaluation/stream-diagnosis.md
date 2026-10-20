@@ -63,10 +63,11 @@ so matches below use sequence and metadata rather than unique request identity.
   wait is not by itself proof of a proxy idle timeout: the client also received
   partial tokens afterwards.
 
-The following work was subsequently approved and implemented locally. It has not
-been deployed, so it does not explain or replace the earlier live outcomes.
+The following work was subsequently approved and implemented locally. It was not
+deployed when the earlier diagnostics ran, so it does not explain or replace
+those outcomes. Post-deployment observations are recorded separately below.
 
-## Local generation hardening (not yet deployed)
+## Generation hardening
 
 - Existing chat model, prompt, token cap, retrieval and ownership checks unchanged.
   Complaint intake retains its own existing Groq client and behavior.
@@ -100,6 +101,19 @@ been deployed, so it does not explain or replace the earlier live outcomes.
   coverage check retry budgets, timeout, worker retention, cancellation, cleanup,
   safe logs and non-duplication. Full local suite: **320 backend + 42 frontend**,
   lint, build and compile checks. No new live performance claim is made.
+
+### Subsequent post-deployment observation
+
+The maintainer subsequently confirmed both deployments live. A new five-question
+run at UTC **11:15:32–11:16:55** received the new request IDs and provider progress
+on all requests. Four returned complete answers and sources; complaint-status
+returned a structured `generation_busy` error at 23.368 s, with no partial text
+and no transport exception. All five streams closed cleanly; maximum observed
+initial/inter-event gap was 1.566 s. This is evidence of live progress/error
+handling, not proof the original disconnect was fixed or quota limits removed.
+Request `0a0bb77949204f16b4885d55a33cfb83` can be correlated with Render logs to
+identify the exact final provider status. See the preserved artifact
+`results/2026-10-20-postdeploy-web.json`. No failed row was replaced or rerun.
 
 ## Reproduction
 
