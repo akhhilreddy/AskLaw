@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     GROQ_GENERATION_DEADLINE_SECONDS: float = Field(default=60, gt=0, le=120)
     GROQ_REQUEST_TIMEOUT_SECONDS: float = Field(default=15, gt=0, le=60)
     GROQ_MAX_RETRY_WAIT_SECONDS: float = Field(default=30, ge=0, le=60)
+    GROQ_CHAT_REQUEST_TOKEN_BUDGET: int = Field(default=6144, ge=256, le=32000)
     SEARXNG_IDLE_REPROBE_SECONDS: float = Field(default=600, gt=0)
     MCP_HOST: str = "127.0.0.1"
     MCP_PORT: int = 8001

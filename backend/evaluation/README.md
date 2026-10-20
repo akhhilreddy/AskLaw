@@ -246,8 +246,130 @@ Runtime application, environment and deployment configuration had not changed
 when those diagnostic measurements were made.
 
 Subsequently approved local generation hardening is described in
-[stream-diagnosis.md](stream-diagnosis.md#local-generation-hardening-not-yet-deployed).
+[stream-diagnosis.md](stream-diagnosis.md#generation-hardening).
 It now passes **320 backend + 42 frontend tests (362 total)**, lint/build/compile
-checks, including deterministic 429/deadline/disconnect tests. It has not been
-deployed or live-benchmarked. Earlier artifacts remain unchanged; do not claim
-they demonstrate the new retry/progress policy's production behavior.
+checks, including deterministic 429/deadline/disconnect tests at that stage.
+The maintainer later confirmed deployment; the new run below is separate evidence.
+Earlier artifacts remain unchanged and do not retroactively demonstrate the new
+retry/progress policy's behavior.
+
+### Post-deployment validation — 20 October 2026
+
+Artifact: [2026-10-20-postdeploy-web.json](results/2026-10-20-postdeploy-web.json).
+UTC window **11:15:32–11:16:55** (IST **16:45:32–16:46:55**). One ordinary guest,
+same five questions once in the same order and with the same one-second pacing,
+100-second health budget, 90-second per-chat cap, no intake calls or saved chats.
+Health returned in **0.610 s**; this was not a controlled cold-start experiment.
+
+`measure_postdeploy.py` temporarily substitutes the existing diagnostic observer
+for the request observer, retaining the original completion accounting, payloads,
+quota and pacing. The report records entrypoint and diagnostic source hashes.
+It adds allowlisted progress/error code counts and server-generated request IDs;
+no response bodies, credentials or account identifiers are saved. Two offline
+tests verify scoring/privacy and restoration of the process-local substitutions.
+
+| Observation | Result |
+| --- | --- |
+| Answers completed with sources and final route | **4/5**, five sources each |
+| Structured answer failure | complaint-status: `generation_busy` at **23.368 s**, no answer tokens, one error event |
+| Transport observation | All five closed cleanly; zero client-side transport exceptions in this sample |
+| First answer, successful only | Median **5.329 s**, range **4.107–30.777 s**, n=4 |
+| Complete stream, successful only | Median **7.249 s**, range **5.314–33.043 s**, n=4 |
+| All-attempt elapsed median | **8.542 s**, n=5; includes the busy error, not an answer-latency guarantee |
+| Progress | All five received progress; largest initial/inter-event gap **1.566 s** |
+| Request correlation | All five returned valid 32-hex request IDs |
+
+The FIR answer received **28 `provider_retrying` progress events**, not 28 retries,
+and completed in 33.043 s. The failed complaint-status case received 21 such
+progress events, then one `generation_busy` error. That confirms the new bounded
+failure protocol, not successful answering. The code can emit this for 429 or
+selected server errors; server logs for request ID
+`0a0bb77949204f16b4885d55a33cfb83` are needed to determine the exact final provider
+status/reason. The observer never treats provider status text as evidence.
+
+Public Netlify HTML/JavaScript checks returned HTTP 200 and found both the new
+provider-wait text and the 100-second readiness message. This checks deployed
+assets, not the rendered experience or an exact Git SHA. The API likewise does
+not expose its deployed revision; deployment confirmation is maintainer-reported,
+supported by the new functional headers/events, not a full commit attestation.
+
+No retries of failed cases, extra guests, model changes or new deployments were
+made during this measurement. Do not present 4/5 as uptime, or the successful-only
+median as latency for every request. No expert legal correctness or concurrent
+capacity was measured. Across the three original five-question runs there are
+**11 completed answers / 15 actual attempts**; setup failures and the separate
+single diagnostic are reported outside this pooled descriptive count.
+
+Latest local checks: **322 backend + 42 frontend (364 total)**, lint, build,
+compile and diff checks passed; existing Vite bundle-size warning remains.
+
+Reproduce only with authorization for provider usage, choosing a fresh filename:
+
+```bash
+cd backend
+.venv/bin/python -m evaluation.measure_postdeploy --live \
+  --output evaluation/results/new-postdeploy-web.json
+```
+
+### Compact research prompt / request-budget measurement (local, not deployed)
+
+The local prompt now states each grounding rule once and serializes selected
+evidence as compact JSON. No source-selection/ranking change or text truncation:
+tests decode the JSON and compare every passage, reference, date, kind and conflict
+signal. Retrieval, model, output cap, conversation and intake paths are unchanged.
+
+The pinned offline tokenizer uses the bundled o200k ordinary-text vocabulary,
+SHA-256 verified against the upstream constructor; source/license are in
+`app/assets/tokenizer/`. Input **text** tokens are counted deterministically.
+Chat-template overhead is not claimed exact: **128 tokens** are reserved explicitly
+in addition to the unchanged **2,048 output tokens**. The default request budget
+is **6,144 tokens**. Over-budget requests return `research_context_too_large`
+before Groq, asking for a narrower question; they do not remove evidence and
+continue as if nothing was omitted. Missing/corrupt vocabulary fails safely with
+`research_budget_unavailable`. No runtime network fallback or token download.
+
+Artifacts: [before](results/2026-10-20-prompt-before.json),
+[after](results/2026-10-20-prompt-after.json),
+[paired comparison](results/2026-10-20-prompt-comparison.json).
+The baseline prompt hash matches the repository's `faa7d8a` prompt source.
+The frozen cases/vocabulary/evidence hashes match across the reports; comparisons
+reject changed datasets, reordered cases or changed evidence. The sources are
+fictional, not real legal propositions or a legal-answer evaluation.
+
+| Fixture | Input-text tokens before | After | Reduction |
+| --- | --- | --- | --- |
+| One document source | 2,338 | 805 | 65.569% |
+| Five web sources | 3,512 | 1,982 | 43.565% |
+| Two document + three web sources | 3,519 | 1,986 | 43.564% |
+
+For five web sources, local input + framing allowance + max-output reservation
+fell from **5,688 to 4,158**. The 43.565% value describes input-text tokens only,
+not that combined reservation, total billed tokens, actual output, latency, cost,
+legal quality or a proven reduction in production 429 frequency. Quotas remain
+shared; this is not global minute-level admission control or a capacity increase.
+
+Reproduce the new prompt measurement without network:
+
+```bash
+cd backend
+.venv/bin/python -m evaluation.measure_prompt_budget \
+  --baseline evaluation/results/2026-10-20-prompt-before.json \
+  --output evaluation/results/new-prompt-comparison.json
+```
+
+One additional [real Groq smoke call](results/2026-10-20-compact-prompt-smoke.json)
+used this frozen five-source fixture with a **512-token output cap** (the app
+remains at 2,048), no retries, no guest/web requests. HTTP 200, a nonempty answer,
+2,056 provider-reported prompt tokens, 153 completion tokens, 2,209 total.
+The local text count was 1,982; server/template overhead was therefore 74 for
+this single call, inside the 128-token allowance. This does not guarantee exact
+overhead for all future server templates. Three lexical presence checks for
+review/receipt/dispute passed; they are not expert quality or factual correctness.
+The 1.501-second observation is not a paired speed-up or production latency.
+Async parsing/privacy/failure accounting are covered by two offline tests.
+
+Full local regression checks after this change: **336 backend + 42 frontend**
+(378 total), lint/build/compile/diff checks passed. Existing Vite chunk warning
+remains. Tokenizer dependency/vocabulary were added; no `.env`, Dockerfile or
+hosting settings were changed. These prompt changes still need deployment and a
+new separately recorded live test; earlier production artifacts remain unchanged.

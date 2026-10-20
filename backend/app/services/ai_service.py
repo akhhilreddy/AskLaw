@@ -42,6 +42,7 @@ import logging
 from uuid import uuid4
 import httpx
 from app.services.generation_runtime import generation_pool, GenerationBusy, GenerationTimeout
+from app.services.token_budget import enforce_request_budget, RequestBudgetExceeded
 from app.services.availability import NOTICE_MESSAGES, sign_availability
 from app.services.retrieval_events import retrieval_events
 
@@ -591,6 +592,23 @@ def stream_response(
     # =====================================================
     # CALL GROQ
     # =====================================================
+
+    if not is_conversation:
+        try:
+            budget = enforce_request_budget(groq_messages, settings.GROQ_CHAT_REQUEST_TOKEN_BUDGET)
+            logger.info("generation request_id=%s phase=budget input_text_tokens=%d framing_allowance_tokens=%d completion_reservation_tokens=%d request_budget_tokens=%d",
+                        request_id, budget["input_text_tokens"], budget["framing_allowance_tokens"],
+                        budget["completion_reservation_tokens"], budget["request_budget_tokens"])
+        except RequestBudgetExceeded:
+            logger.warning("generation request_id=%s phase=budget status=exceeded", request_id)
+            yield json.dumps({"type": "error", "code": "research_context_too_large",
+                              "content": "This question needs more source text than the research budget allows. Please ask a narrower question or select one document. No evidence was silently removed."}) + "\n"
+            return
+        except Exception:
+            logger.warning("generation request_id=%s phase=budget status=unavailable", request_id)
+            yield json.dumps({"type": "error", "code": "research_budget_unavailable",
+                              "content": "Research request preparation is temporarily unavailable. Please try again shortly."}) + "\n"
+            return
 
     def create_provider_stream(timeout):
         return client.chat.completions.create(

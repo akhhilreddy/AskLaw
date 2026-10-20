@@ -54,7 +54,7 @@ As of 20 October 2026:
 - Research chat, email/Google/passkey authentication, guest entry, Tavily search and Before You Sign have previously been reported working in the public demo.
 - Complaint Pack was developed on `codex/consumer-complaint-pack` and integrated into `codex/guest-demo-experience` as `aaaf010`. The maintainer subsequently confirmed deployment and the in-page confirmation fix (`56bc488`) working live. This is maintainer-reported acceptance, not a new independent production audit.
 - The tested application was promoted in order: **`codex/guest-demo-experience` → `deployment` → `main`**. `deployment` was fast-forwarded to `56bc488`; `main` preserves its earlier documentation history through a merge, resolving the README against the current implementation. Git promotion does not change which branch Netlify or Render is configured to deploy.
-- Latest regression checks pass: **320 backend tests, 42 frontend tests**, lint, production build and compile checks. The backend count includes 15 benchmark-accounting, four stream-diagnostic and 12 generation-runtime tests; desktop/mobile Complaint Pack workflows were also checked on 19 October. Small live measurements include both successes and failures; functional test success must not be confused with live reliability. See [measured metrics](#measured-metrics-and-résumé-claims).
+- Latest regression checks pass: **336 backend tests, 42 frontend tests**, lint, production build and compile checks. Coverage includes benchmark accounting, streaming/provider failure paths, request budgets and offline tokenization; desktop/mobile Complaint Pack workflows were also checked on 19 October. Small live measurements include both successes and failures; functional test success must not be confused with live reliability. See [measured metrics](#measured-metrics-and-résumé-claims).
 
 This status records repository changes and user-confirmed deployment, not an automatic check that every production service is running the same commit. No credentials, environment files or hosting settings were changed during branch promotion. The discarded scenario/playbook experiment is not part of this release.
 
@@ -247,6 +247,7 @@ The backend settings are defined in [`backend/app/core/config.py`](backend/app/c
 | Embeddings | `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `GEMINI_API_KEY`, `GEMINI_EMBEDDING_BATCH_SIZE` | Local or Gemini provider and batch size |
 | Chat and optional intake | `GROQ_API_KEY` | Research generation and consent-gated complaint extraction; Complaint Pack save/build/export remain deterministic |
 | Chat generation bounds | `GROQ_GENERATION_DEADLINE_SECONDS`, `GROQ_REQUEST_TIMEOUT_SECONDS`, `GROQ_MAX_RETRY_WAIT_SECONDS` | Code defaults: 60-second generation budget, 15-second network-phase timeout, 30-second retry-wait cap; no environment edits required |
+| Research request budget | `GROQ_CHAT_REQUEST_TOKEN_BUDGET` | Default 6,144: counted input text + 128 framing allowance + unchanged 2,048 completion reservation; oversized context is rejected, never silently trimmed |
 | Celery | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis broker and result backend; TLS is configured for `rediss://` URLs |
 | Web search | `WEB_SEARCH_PROVIDER`, `TAVILY_API_KEY`, `TAVILY_MAX_QUERIES`, `TAVILY_TIMEOUT_SECONDS`, `SEARXNG_URL` | Provider selection; Tavily defaults to at most 2 queries and a 12-second per-search cap; SearXNG endpoint ends in `/search` |
 | Retrieval budgets | `RESEARCH_DEADLINE_SECONDS`, `SEARXNG_READINESS_BUDGET_SECONDS`, `SEARXNG_IDLE_REPROBE_SECONDS` | Defaults: 75-second overall retrieval cap, optional SearXNG 50-second readiness window and 600-second idle re-probe |
@@ -351,7 +352,7 @@ The backend suite covers authentication/guest gates, ownership, indexing failure
 
 | Check | Result |
 | --- | --- |
-| Backend isolated suite | 320 passed (including 15 benchmark-accounting, four stream-diagnostic and 12 generation-runtime tests) |
+| Backend isolated suite | 336 passed (including prompt/encoding/budget preservation and smoke-check accounting tests) |
 | Frontend Node suite | 42 passed |
 | ESLint, Vite production build | Passed; existing JavaScript chunk-size warning (over 500 kB) |
 | Python compile checks, `git diff --check` | Passed |
@@ -380,7 +381,7 @@ These commands are examples, not checks performed by this README update. Render 
 
 ## Measured metrics and résumé claims
 
-Four bounded live measurements were made on **19 and 20 October 2026**, using the
+Four initial bounded live measurements were made on **19 and 20 October 2026**, using the
 same fixed inputs/expected fields. On 19 October, five sequential deployed-API
 web questions used one ordinary guest, and six fictional intake descriptions
 used real Groq through the local service. On 20 October, the public API health
@@ -391,18 +392,21 @@ health budget completed four of five questions. None load-tested production, rea
 existing users' documents or saved conversations/complaints. The local frontend
 readiness change was not deployed during these measurements; earlier failures
 remain visible and no causal improvement is claimed.
+A fifth web-only run followed the maintainer's deployment confirmation; its
+structured outcomes and progress observations are reported separately below.
 
 Evidence: [19 October report](backend/evaluation/results/2026-10-19-live-resume.json),
 [20 October reproduction](backend/evaluation/results/2026-10-20-live-resume.json),
 [20 October follow-up](backend/evaluation/results/2026-10-20-live-resume-followup.json),
 [20 October web-only / 100-second setup budget](backend/evaluation/results/2026-10-20-live-web-100s.json),
+[20 October post-deployment web run](backend/evaluation/results/2026-10-20-postdeploy-web.json),
 [fixed cases](backend/evaluation/resume_cases.json),
 [runner](backend/evaluation/measure_resume.py), and
 [methodology / reproduction commands](backend/evaluation/README.md#reproducible-résumé-measurements).
 
 | Metric | Observed result | Interpretation |
 | --- | --- | --- |
-| Automated tests (20 October) | **362 passed: 320 backend + 42 frontend** | Includes benchmark accounting, controlled provider failures, retry/deadline/disconnect and progress checks; not a production accuracy/success rate |
+| Automated tests (20 October) | **378 passed: 336 backend + 42 frontend** | Includes benchmark accounting, controlled provider failures, prompt/token-budget and progress checks; not a production accuracy/success rate |
 | Deployed web answer-with-sources completion (19 October) | **3/5 attempts (60%)** | Two request failures retained; no uptime or reliability SLA implied |
 | First answer chunk, successful web requests only (19 October) | **Median 7.178 s**, range 6.197–27.157 s; **n=3** | After health preflight; client/network + API/provider time, not browser rendering or controlled cold-start timing |
 | Complete web stream, successful requests only (19 October) | **Median 7.506 s**, range 7.121–29.966 s; **n=3** | Read alongside the two failures, not as a five-request latency guarantee |
@@ -417,6 +421,10 @@ Evidence: [19 October report](backend/evaluation/results/2026-10-19-live-resume.
 | Follow-up intake (20 October) | **6/6 scope checks; 12 TP, 0 FP, 0 FN; 35/35 exact excerpts** | Same six fixtures, not six new independent examples; supported-case median **2.283 s**, n=4 |
 | Separate web-only completion (20 October, 100-second setup budget) | **4/5 answers with sources; one network-category interruption** | Health returned in **0.364 s**; this did not exercise the extended wait or prove a cold-start fix |
 | Web-only latency, successful requests only | First answer median **8.505 s**; complete stream median **10.310 s**, range **4.918–39.414 s**, n=4 | Failed request retained at **28.865 s**, after partial answer text but before source metadata; not counted as success |
+| Post-deployment web completion (20 October) | **4/5 answers with sources; one structured `generation_busy` error** | Five cleanly closed streams, no client transport exceptions; the busy outcome is a failed answer, not success |
+| Post-deployment successful web latency | First answer median **5.329 s**; completion median **7.249 s**, range **5.314–33.043 s**, n=4 | Includes a slow answer with retry progress; not a causal speed-up claim or an all-request guarantee |
+| Post-deployment stream progress | All five had request IDs and progress; largest observed event gap **1.566 s** | Client-observed event delivery, including time before the first event; not answer-token throughput or a general reliability SLA |
+| Local compact-prompt measurement | Five-source web: **3,512 → 1,982 input-text tokens (43.6% lower)**; RAG-one **2,338 → 805 (65.6% lower)**; hybrid-five **3,519 → 1,986 (43.6% lower)** | Paired frozen fictional fixtures, same evidence/reference text, offline o200k ordinary-text counts; not production/billed-token or latency savings |
 | Curated offline routing checks | **7/7 passed** | Small developer-authored fixture set, not held-out routing accuracy |
 | Curated claim-support checks | **5/5 passed** | Deterministic verifier behavior, not expert legal correctness |
 
@@ -455,12 +463,37 @@ and retained slots bound that risk. Requests encountering a full pool receive a
 clear busy error. This is not horizontal scaling or a provider-quota increase.
 Server-generated request IDs correlate response headers, generation and transport
 logs without logging prompts, answers or provider errors. These changes have
-passed local fault/regression tests but are **not deployed or live-benchmarked**;
-the earlier performance artifacts and failures remain unchanged.
+passed local fault/regression tests. The maintainer subsequently reported both
+deployments live; the new live sample received request IDs and provider progress
+on all five requests. One provider retry ended in a structured busy error rather
+than an unclassified client exception. The exact final provider HTTP status needs
+correlated server logs. Earlier artifacts and failures remain unchanged, and the
+original disconnect's root cause is not established. These observations do not
+prove provider-quota exhaustion or all transport failures have been eliminated.
+
+A subsequent local prompt change replaces repetitive policy prose and verbose
+metadata formatting with compact instructions and lossless JSON source records.
+Selected passages, URLs, source kinds, dates and conflict signals remain intact;
+the request budget rejects oversized contexts instead of silently pruning them.
+Pinned `tiktoken==0.12.0` and a hash-verified vocabulary are bundled for offline
+counting; no vocabulary/model download occurs during requests. This adds a backend
+dependency and approximately 4 MB of vocabulary data; no Dockerfile or environment
+file was edited. The 128-token chat-framing allowance is explicit, not exact billed
+usage. Conversation and Complaint Pack prompts, model and chat output cap remain
+unchanged. This reduces per-request demand, not the shared provider quota, so 429s
+remain possible. The compact prompt is **not yet deployed**.
+
+The [paired report](backend/evaluation/results/2026-10-20-prompt-comparison.json)
+retains matching fixture/evidence hashes and the old prompt hash from `faa7d8a`.
+One real Groq [fictional smoke check](backend/evaluation/results/2026-10-20-compact-prompt-smoke.json)
+returned HTTP 200 and a nonempty answer: **2,056 provider-reported prompt tokens**
+versus **1,982 locally counted text tokens**, with a 512-token completion cap only
+for that smoke test. Three simple lexical checks passed; they are not a semantic
+or legal accuracy score. No production performance improvement is claimed.
 
 Defensible résumé wording, with the small benchmark boundary kept explicit:
 
-> Built and tested a legal research and document workspace with **362 automated
+> Built and tested a legal research and document workspace with **378 automated
 > tests**, covering authentication, owner-scoped retrieval, streaming/fallbacks,
 > agreement comparison and source-linked consumer-complaint preparation.
 
@@ -468,6 +501,10 @@ Defensible résumé wording, with the small benchmark boundary kept explicit:
 > matched **12/12 annotated field-value targets** across four supported cases and
 > passed **6/6 scope checks**, with **2.25 s median service-level extraction time**
 > for the four supported cases.
+
+> Reduced research input-text tokens by **43.6% (3,512 to 1,982)** on a fixed
+> five-source synthetic web fixture while preserving all selected source passages
+> and references, with offline request budgeting and regression checks.
 
 Do not advertise “100% extraction accuracy,” “99.9% uptime,” “supports thousands
 of users,” or unqualified 1.88-second/7.5-second response times from these samples.

@@ -1,0 +1,29 @@
+{
+  "scope": "one fictional-source generation smoke check; not legal quality or production latency",
+  "model": "openai/gpt-oss-120b",
+  "max_completion_tokens": 512,
+  "prompt_source_sha256": "83e46e6623e30fd2b02560716f884442c6977b99054a7cfdf42fc0db7d1f0c88",
+  "local_budget": {
+    "input_text_tokens": 1982,
+    "framing_allowance_tokens": 128,
+    "completion_reservation_tokens": 512,
+    "request_budget_tokens": 2622,
+    "tokenizer": "o200k ordinary text; server framing is an allowance, not billed usage"
+  },
+  "automatic_retries": 0,
+  "status": "response_received",
+  "http_status": 200,
+  "nonempty_answer": true,
+  "answer_sha256": "5e57aa34d38cd7b655782be9b0068a2b76f18e6e3c35df4230629ad359ad52fb",
+  "usage": {
+    "prompt_tokens": 2056,
+    "completion_tokens": 153,
+    "total_tokens": 2209
+  },
+  "lexical_smoke_checks_not_accuracy": {
+    "review": true,
+    "receipt": true,
+    "disput": true
+  },
+  "elapsed_seconds": 1.501171
+}

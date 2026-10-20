@@ -1,0 +1,39 @@
+{
+  "scope": "offline synthetic prompt inputs, not legal quality or production latency",
+  "cases_sha256": "4f664239d0e98378c0d290c1c2df44374c165fb92aa6ba048135568ef0c2f17e",
+  "vocabulary_sha256": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d",
+  "prompt_source_sha256": "83e46e6623e30fd2b02560716f884442c6977b99054a7cfdf42fc0db7d1f0c88",
+  "git_commit": "faa7d8a3b140b3afc49e821c90c12c2427f013fa",
+  "rows": [
+    {
+      "id": "rag-one",
+      "prompt_characters": 4099,
+      "evidence_text_sha256": "4c3e94721da00dfa88227dd76d37cc7f7fbd3c04392152b757d4f8c839a7beaf",
+      "input_text_tokens": 805,
+      "framing_allowance_tokens": 128,
+      "completion_reservation_tokens": 2048,
+      "request_budget_tokens": 2981,
+      "tokenizer": "o200k ordinary text; server framing is an allowance, not billed usage"
+    },
+    {
+      "id": "web-five",
+      "prompt_characters": 9672,
+      "evidence_text_sha256": "e38d1c8dec43b9c40350fe97ea41c50c3d660cbc58e5a13a76ff9830a9e4b7f9",
+      "input_text_tokens": 1982,
+      "framing_allowance_tokens": 128,
+      "completion_reservation_tokens": 2048,
+      "request_budget_tokens": 4158,
+      "tokenizer": "o200k ordinary text; server framing is an allowance, not billed usage"
+    },
+    {
+      "id": "hybrid-five",
+      "prompt_characters": 9683,
+      "evidence_text_sha256": "e38d1c8dec43b9c40350fe97ea41c50c3d660cbc58e5a13a76ff9830a9e4b7f9",
+      "input_text_tokens": 1986,
+      "framing_allowance_tokens": 128,
+      "completion_reservation_tokens": 2048,
+      "request_budget_tokens": 4162,
+      "tokenizer": "o200k ordinary text; server framing is an allowance, not billed usage"
+    }
+  ]
+}
