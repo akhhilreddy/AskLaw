@@ -1,0 +1,350 @@
+{
+  "schema_version": 2,
+  "harness_version": "2",
+  "harness_sha256": "00bc21192ce5bc7ecc0ebf9b5b32134a08786e6e2aba5bf4abcb07276c570f24",
+  "legacy_cases_sha256": "2b8d539de96433970743ef4c1200a9559cd47d1fbe67e8591e7a9624270d4c09",
+  "started_at_utc": "2026-10-20T07:43:35.329799+00:00",
+  "git_commit": "2910ddc7ba7a2cf4f7a5e1bc8010d6152d7d3af5",
+  "harness_uncommitted": true,
+  "python": "3.14.3",
+  "cases_sha256": "f09f72ff6348193282d4a3f15875713984269b1dd9d43c793b8a4f1efc6a6346",
+  "mode": "live",
+  "offline_curated_cases": [
+    {
+      "id": "document-exact-provision",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-semantic",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-unsupported",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-isolation",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "web-current-law",
+      "metric": "route",
+      "expected": "web",
+      "observed": "web",
+      "pass": true
+    },
+    {
+      "id": "web-source-retrieval",
+      "metric": "route",
+      "expected": "web",
+      "observed": "web",
+      "pass": true
+    },
+    {
+      "id": "hybrid-provision-development",
+      "metric": "route",
+      "expected": "hybrid",
+      "observed": "hybrid",
+      "pass": true
+    },
+    {
+      "id": "verification-supported",
+      "metric": "claim_support",
+      "expected": "supported",
+      "observed": [
+        "supported"
+      ],
+      "grounding_score": 1.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 1,
+        "partial_claims": 0,
+        "unsupported_claims": 0,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-partial",
+      "metric": "claim_support",
+      "expected": "partial",
+      "observed": [
+        "partial"
+      ],
+      "grounding_score": 0.5,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 1,
+        "unsupported_claims": 0,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-unsupported",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 0
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-numeric-mismatch",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-identifier-mismatch",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 1
+      },
+      "pass": true
+    }
+  ],
+  "limitations": [
+    "Small fixed, developer-authored cases; no held-out legal benchmark or expert correctness review.",
+    "Sequential requests, not throughput, concurrent capacity, availability SLA or a load test.",
+    "Public API timings include client-network and server/provider time, exclude browser rendering and Netlify UI.",
+    "API preflight runs before chat; idle/cold state is not controlled. No cold-start improvement claim.",
+    "Intake timings call the real local service/Groq, not deployed registered-account HTTP/auth/persistence.",
+    "Field scores compare normalized exact values on five named scalar fields, not descriptions, remedies or legal validity.",
+    "Scope denominator includes all planned intake cases; field precision/recall only use successful provider responses.",
+    "Grounding is a deterministic evidence-support observation, never legal accuracy.",
+    "No live private-document RAG, indexing, browser flow, two-user isolation or stress test performed.",
+    "No missing results are removed. Harness does not retry failed cases; app/SDK retry policies remain unchanged.",
+    "Failure diagnostics contain allowlisted category/status only; no error bodies/messages/URLs.",
+    "End-to-end expected-fact recall includes every planned fixture fact, including unavailable calls."
+  ],
+  "providers": {
+    "web_local_setting": "tavily",
+    "public_deployed_commit": "not_exposed_by_health_endpoint",
+    "intake_model": "openai/gpt-oss-120b"
+  },
+  "web": {
+    "preflight": {
+      "status": "setup_failed",
+      "elapsed_seconds": 65.010477,
+      "failure": {
+        "category": "timeout"
+      }
+    },
+    "rows": [
+      {
+        "id": "affidavit",
+        "status": "not_run_setup_failed"
+      },
+      {
+        "id": "consumer-helpline",
+        "status": "not_run_setup_failed"
+      },
+      {
+        "id": "fir",
+        "status": "not_run_setup_failed"
+      },
+      {
+        "id": "complaint-status",
+        "status": "not_run_setup_failed"
+      },
+      {
+        "id": "fundamental-duties",
+        "status": "not_run_setup_failed"
+      }
+    ],
+    "summary": {
+      "planned": 5,
+      "completed_with_answer_and_sources": 0,
+      "status_counts": {
+        "not_run_setup_failed": 5
+      },
+      "successful_first_answer": {
+        "n": 0,
+        "min_seconds": null,
+        "median_seconds": null,
+        "max_seconds": null
+      },
+      "successful_completion": {
+        "n": 0,
+        "min_seconds": null,
+        "median_seconds": null,
+        "max_seconds": null
+      },
+      "all_attempt_completion": {
+        "n": 0,
+        "min_seconds": null,
+        "median_seconds": null,
+        "max_seconds": null
+      }
+    }
+  },
+  "intake": {
+    "rows": [
+      {
+        "id": "explicit-laptop",
+        "status": "ok",
+        "elapsed_seconds": 2.241163,
+        "score": {
+          "scope_pass": true,
+          "field_true_positive": 4,
+          "field_false_positive": 0,
+          "field_false_negative": 0,
+          "missing_fields": [],
+          "unexpected_fields": [],
+          "quote_total": 10,
+          "quote_exact": 10,
+          "dates_not_invented": true
+        },
+        "expected_fact_count": 4
+      },
+      {
+        "id": "mixer-replacement",
+        "status": "ok",
+        "elapsed_seconds": 2.324214,
+        "score": {
+          "scope_pass": true,
+          "field_true_positive": 3,
+          "field_false_positive": 0,
+          "field_false_negative": 0,
+          "missing_fields": [],
+          "unexpected_fields": [],
+          "quote_total": 9,
+          "quote_exact": 9,
+          "dates_not_invented": true
+        },
+        "expected_fact_count": 3
+      },
+      {
+        "id": "unknown-currency-date",
+        "status": "ok",
+        "elapsed_seconds": 2.47704,
+        "score": {
+          "scope_pass": true,
+          "field_true_positive": 1,
+          "field_false_positive": 0,
+          "field_false_negative": 0,
+          "missing_fields": [],
+          "unexpected_fields": [],
+          "quote_total": 7,
+          "quote_exact": 7,
+          "dates_not_invented": true
+        },
+        "expected_fact_count": 1
+      },
+      {
+        "id": "conflicting-amounts",
+        "status": "ok",
+        "elapsed_seconds": 2.221715,
+        "score": {
+          "scope_pass": true,
+          "field_true_positive": 4,
+          "field_false_positive": 0,
+          "field_false_negative": 0,
+          "missing_fields": [],
+          "unexpected_fields": [],
+          "quote_total": 9,
+          "quote_exact": 9,
+          "dates_not_invented": true
+        },
+        "expected_fact_count": 4
+      },
+      {
+        "id": "out-of-scope-tenancy",
+        "status": "ok",
+        "elapsed_seconds": 1.182943,
+        "score": {
+          "scope_pass": true,
+          "field_true_positive": 0,
+          "field_false_positive": 0,
+          "field_false_negative": 0,
+          "missing_fields": [],
+          "unexpected_fields": [],
+          "quote_total": 0,
+          "quote_exact": 0,
+          "dates_not_invented": true
+        },
+        "expected_fact_count": 0
+      },
+      {
+        "id": "out-of-scope-wages",
+        "status": "ok",
+        "elapsed_seconds": 1.06786,
+        "score": {
+          "scope_pass": true,
+          "field_true_positive": 0,
+          "field_false_positive": 0,
+          "field_false_negative": 0,
+          "missing_fields": [],
+          "unexpected_fields": [],
+          "quote_total": 0,
+          "quote_exact": 0,
+          "dates_not_invented": true
+        },
+        "expected_fact_count": 0
+      }
+    ],
+    "summary": {
+      "attempted": 6,
+      "responses": 6,
+      "scope_passes": 6,
+      "scope_denominator": 6,
+      "field_true_positive": 12,
+      "field_false_positive": 0,
+      "field_false_negative": 0,
+      "field_metrics_response_denominator": 6,
+      "micro_precision": 1.0,
+      "micro_recall": 1.0,
+      "planned_expected_facts": 12,
+      "end_to_end_expected_fact_recall": 1.0,
+      "response_latency": {
+        "n": 6,
+        "min_seconds": 1.068,
+        "median_seconds": 2.231,
+        "max_seconds": 2.477
+      }
+    }
+  },
+  "finished_at_utc": "2026-10-20T07:44:58.245050+00:00"
+}

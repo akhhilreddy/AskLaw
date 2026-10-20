@@ -24,6 +24,7 @@ AskLaw provides educational and informational research assistance, not legal adv
 - [Before You Sign](#before-you-sign)
 - [Consumer Complaint Pack](#consumer-complaint-pack)
 - [Testing and evaluation](#testing-and-evaluation)
+- [Measured metrics and résumé claims](#measured-metrics-and-résumé-claims)
 - [Security and limitations](#security-and-limitations)
 - [Deployment notes](#deployment-notes)
 
@@ -48,12 +49,12 @@ SearXNG remains an optional provider in the code and has a separate Render servi
 
 ## Current status
 
-As of 19 October 2026:
+As of 20 October 2026:
 
 - Research chat, email/Google/passkey authentication, guest entry, Tavily search and Before You Sign have previously been reported working in the public demo.
 - Complaint Pack was developed on `codex/consumer-complaint-pack` and integrated into `codex/guest-demo-experience` as `aaaf010`. The maintainer subsequently confirmed deployment and the in-page confirmation fix (`56bc488`) working live. This is maintainer-reported acceptance, not a new independent production audit.
 - The tested application was promoted in order: **`codex/guest-demo-experience` → `deployment` → `main`**. `deployment` was fast-forwarded to `56bc488`; `main` preserves its earlier documentation history through a merge, resolving the README against the current implementation. Git promotion does not change which branch Netlify or Render is configured to deploy.
-- Local regression checks pass: **288 backend tests, 38 frontend tests**, lint, production build and desktop/mobile Complaint Pack workflows. Tests distinguish mocked API/provider checks from live integration. See [testing and evaluation](#testing-and-evaluation).
+- Latest regression checks pass: **307 backend tests, 41 frontend tests**, lint, production build and compile checks. The backend count includes 15 benchmark-accounting and four stream-diagnostic tests; desktop/mobile Complaint Pack workflows were also checked on 19 October. Small live measurements include both successes and failures; functional test success must not be confused with live reliability. See [measured metrics](#measured-metrics-and-résumé-claims).
 
 This status records repository changes and user-confirmed deployment, not an automatic check that every production service is running the same commit. No credentials, environment files or hosting settings were changed during branch promotion. The discarded scenario/playbook experiment is not part of this release.
 
@@ -345,15 +346,16 @@ The test-only `WEB_SEARCH_PROVIDER=searxng` override keeps legacy search tests o
 
 The backend suite covers authentication/guest gates, ownership, indexing failures and leases, enqueue failures, rate limits and Redis-down behavior, retrieval routes/deadlines/availability, Tavily/SearXNG, claim verification, agreement analysis/comparison, and Complaint Pack parsing/intake/CRUD/revisions/source validation. Frontend tests cover readable errors, readiness/notices, report escaping, exact source selection, intake questions, reviewed event matching and atomic document imports.
 
-### Latest local validation — 19 October 2026
+### Latest local validation — 20 October 2026
 
 | Check | Result |
 | --- | --- |
-| Backend isolated suite | 288 passed |
-| Frontend Node suite | 38 passed |
+| Backend isolated suite | 307 passed (including 15 benchmark-accounting and four stream-diagnostic tests) |
+| Frontend Node suite | 41 passed |
 | ESLint, Vite production build | Passed; existing JavaScript chunk-size warning (over 500 kB) |
 | Python compile checks, `git diff --check` | Passed |
-| Complaint browser regressions at 1440 px and 390 px | Six runs passed, with no page errors or horizontal overflow |
+| Complaint browser regressions at 1440 px and 390 px (19 October) | Six runs passed, with no page errors or horizontal overflow; these predate the separate 20 October readiness-banner change |
+| Readiness browser check (20 October) | Blocking only `/health` displayed Retry; restoring health returned 200 and cleared the banner, without leaving login |
 
 Browser checks covered consent, review/clarification/skip, successful and failed refresh, first-save state retention, grouped source review, narrative preservation, both import orders, evidence links, save/build/edit/reopen and HTML download. The latest desktop/mobile checks also verified replacement comparisons, cancellation, discard/open/delete, invalidation of stale confirmations and zero native dialogs. They used intercepted fictional API/provider responses and, for pack generation, the actual local backend builder. Replaying the earlier fictional live case produced five reviewed events and ten source references rather than duplicate events. Reusable helpers are `frontend/tests/complaintWorkflow.browser.mjs` and `frontend/tests/complaintConfirmations.browser.mjs`; callers supply an isolated Playwright Page plus the required fixtures/callbacks, rather than invoking them as Node unit tests. Browser tooling and local test runners are not application dependencies.
 
@@ -374,6 +376,95 @@ curl --fail --show-error https://asklaw-api.onrender.com/auth/providers
 ```
 
 These commands are examples, not checks performed by this README update. Render Free services may take time to wake after inactivity. For future releases, a live smoke test should cover guest quota, registered login/refresh, a PDF moving to `indexed`, document/web research, agreement review/comparison and ownership isolation. Repeat Complaint Pack save/import/intake/build/reopen/export and confirmation acceptance with fictional data after relevant changes. Optional SearXNG health/search checks are relevant only when that provider is selected.
+
+## Measured metrics and résumé claims
+
+Four bounded live measurements were made on **19 and 20 October 2026**, using the
+same fixed inputs/expected fields. On 19 October, five sequential deployed-API
+web questions used one ordinary guest, and six fictional intake descriptions
+used real Groq through the local service. On 20 October, the public API health
+preflight timed out before guest creation, so no web questions ran; the six real
+Groq intake cases did run. A later unchanged-budget reproduction also timed out
+at setup and completed intake. A separate web-only run with a recorded 100-second
+health budget completed four of five questions. None load-tested production, read
+existing users' documents or saved conversations/complaints. The local frontend
+readiness change was not deployed during these measurements; earlier failures
+remain visible and no causal improvement is claimed.
+
+Evidence: [19 October report](backend/evaluation/results/2026-10-19-live-resume.json),
+[20 October reproduction](backend/evaluation/results/2026-10-20-live-resume.json),
+[20 October follow-up](backend/evaluation/results/2026-10-20-live-resume-followup.json),
+[20 October web-only / 100-second setup budget](backend/evaluation/results/2026-10-20-live-web-100s.json),
+[fixed cases](backend/evaluation/resume_cases.json),
+[runner](backend/evaluation/measure_resume.py), and
+[methodology / reproduction commands](backend/evaluation/README.md#reproducible-résumé-measurements).
+
+| Metric | Observed result | Interpretation |
+| --- | --- | --- |
+| Automated tests (20 October) | **348 passed: 307 backend + 41 frontend** | Includes benchmark accounting, controlled provider failures and readiness checks; not a production accuracy/success rate |
+| Deployed web answer-with-sources completion (19 October) | **3/5 attempts (60%)** | Two request failures retained; no uptime or reliability SLA implied |
+| First answer chunk, successful web requests only (19 October) | **Median 7.178 s**, range 6.197–27.157 s; **n=3** | After health preflight; client/network + API/provider time, not browser rendering or controlled cold-start timing |
+| Complete web stream, successful requests only (19 October) | **Median 7.506 s**, range 7.121–29.966 s; **n=3** | Read alongside the two failures, not as a five-request latency guarantee |
+| Deployed API reproduction (20 October) | **65.007 s health preflight timeout; five questions not run** | No guest created and no chat POST attempted; not five failed chat responses. The failing network/server hop is not established. |
+| Real Groq intake completion | **19 October: 2/6. 20 October: 6/6.** | Local service-level calls, not deployed authenticated form/save/export flows. No reliability fix or causal improvement is claimed. |
+| Intake response time (20 October, all six cases) | **Median 1.875 s**, range 1.421–2.742 s; **n=6** | Includes two faster out-of-scope responses |
+| Supported complaint extraction time (20 October) | **Median 2.247 s; n=4** | The four supported fictional cases only; derived from saved report rows |
+| Intake scope checks (20 October) | **6/6 passed** | Four supported product complaints and two out-of-scope descriptions, fixed developer-authored labels |
+| Normalized exact field-value matches (20 October) | **12 TP, 0 FP, 0 FN**, over **12 planned targets** | Across four supported fixtures; conditional and end-to-end expected-fact recall both 12/12 for this sample, not general extraction accuracy |
+| Returned intake excerpt fidelity (20 October) | **34/34 excerpts occur in the input** | Application-enforced substring property, not independent semantic/legal correctness |
+| Follow-up API setup (20 October) | **65.010 s timeout; five questions not run** | Same original budget, no guest created; retained separately from actual chat attempts |
+| Follow-up intake (20 October) | **6/6 scope checks; 12 TP, 0 FP, 0 FN; 35/35 exact excerpts** | Same six fixtures, not six new independent examples; supported-case median **2.283 s**, n=4 |
+| Separate web-only completion (20 October, 100-second setup budget) | **4/5 answers with sources; one network-category interruption** | Health returned in **0.364 s**; this did not exercise the extended wait or prove a cold-start fix |
+| Web-only latency, successful requests only | First answer median **8.505 s**; complete stream median **10.310 s**, range **4.918–39.414 s**, n=4 | Failed request retained at **28.865 s**, after partial answer text but before source metadata; not counted as success |
+| Curated offline routing checks | **7/7 passed** | Small developer-authored fixture set, not held-out routing accuracy |
+| Curated claim-support checks | **5/5 passed** | Deterministic verifier behavior, not expert legal correctness |
+
+All reports preserve failures. Version 2 adds allowlisted timeout/network/
+protocol/HTTP diagnostic categories, partial-stream accounting, harness/case hashes
+and expected-fact recall that includes unavailable cases. These additions cannot
+retroactively diagnose version 1's failures. The fixed-case SHA-256 is identical
+across all runs. Version 3 records the explicit setup budget and supports web-only
+measurement without extra intake calls. Source presence is not retrieval relevance, and grounding is
+not legal accuracy. No live private-document Recall@k, concurrent capacity,
+throughput, p95/p99, uptime or “faster than before” improvement was measured.
+The production commit is not exposed by `/health`; reports record the local base
+commit without equating it to the deployed revision. No app, environment or
+deployment setting was changed to obtain the second run's results.
+
+A separate [single stream diagnostic](backend/evaluation/results/2026-10-20-stream-diagnostic.json)
+repeated the interrupted complaint-status question once and completed in **4.298 s**
+over HTTP/1.1, including sources, verification and final route. It is not pooled
+into the five-question benchmark or used to replace its failed row. Controlled
+fault tests distinguish a provider error event from a transport read failure.
+The intermittent failure's server-side cause remains unproven; see the
+[investigation](backend/evaluation/stream-diagnosis.md). Harness version 4 also
+requires the final route event before counting completion. All seven historical
+successful benchmark rows already have that event; their counts are unchanged.
+Maintainer-supplied server logs show successful five-source retrieval followed by
+Groq 429 responses with SDK retry waits of **7, 24 and 29 seconds**. These explain
+part of the long response times, not the exact client delivery interruption.
+Server-side generation completion is not proof of successful client delivery.
+
+
+Defensible résumé wording, with the small benchmark boundary kept explicit:
+
+> Built and tested a legal research and document workspace with **348 automated
+> tests**, covering authentication, owner-scoped retrieval, streaming/fallbacks,
+> agreement comparison and source-linked consumer-complaint preparation.
+
+> Evaluated Groq-powered complaint intake on **six fixed fictional scenarios**:
+> matched **12/12 annotated field-value targets** across four supported cases and
+> passed **6/6 scope checks**, with **2.25 s median service-level extraction time**
+> for the four supported cases.
+
+Do not advertise “100% extraction accuracy,” “99.9% uptime,” “supports thousands
+of users,” or unqualified 1.88-second/7.5-second response times from these samples.
+The slow initial health response and fast subsequent probes support a cold-start
+explanation, but do not establish the exact server-side delay. The interrupted
+web stream still needs investigation; its sanitized network category does not
+identify which hop failed. A larger independently
+labelled dataset and repeatable production measurements are needed before broad
+quality/reliability claims; capacity testing remains a separate future step.
 
 ## Security and limitations
 

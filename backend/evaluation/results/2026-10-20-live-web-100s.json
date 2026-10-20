@@ -1,0 +1,343 @@
+{
+  "schema_version": 2,
+  "harness_version": "3",
+  "harness_sha256": "47469c44105662c7d44a6b4af8021fba6228fe337dcab5f7e5665725658af1f8",
+  "legacy_cases_sha256": "2b8d539de96433970743ef4c1200a9559cd47d1fbe67e8591e7a9624270d4c09",
+  "started_at_utc": "2026-10-20T07:45:57.073379+00:00",
+  "git_commit": "2910ddc7ba7a2cf4f7a5e1bc8010d6152d7d3af5",
+  "harness_uncommitted": true,
+  "python": "3.14.3",
+  "cases_sha256": "f09f72ff6348193282d4a3f15875713984269b1dd9d43c793b8a4f1efc6a6346",
+  "mode": "live",
+  "offline_curated_cases": [
+    {
+      "id": "document-exact-provision",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-semantic",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-unsupported",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-isolation",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "web-current-law",
+      "metric": "route",
+      "expected": "web",
+      "observed": "web",
+      "pass": true
+    },
+    {
+      "id": "web-source-retrieval",
+      "metric": "route",
+      "expected": "web",
+      "observed": "web",
+      "pass": true
+    },
+    {
+      "id": "hybrid-provision-development",
+      "metric": "route",
+      "expected": "hybrid",
+      "observed": "hybrid",
+      "pass": true
+    },
+    {
+      "id": "verification-supported",
+      "metric": "claim_support",
+      "expected": "supported",
+      "observed": [
+        "supported"
+      ],
+      "grounding_score": 1.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 1,
+        "partial_claims": 0,
+        "unsupported_claims": 0,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-partial",
+      "metric": "claim_support",
+      "expected": "partial",
+      "observed": [
+        "partial"
+      ],
+      "grounding_score": 0.5,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 1,
+        "unsupported_claims": 0,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-unsupported",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 0
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-numeric-mismatch",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-identifier-mismatch",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 1
+      },
+      "pass": true
+    }
+  ],
+  "measurement_settings": {
+    "live_section": "web",
+    "health_timeout_seconds": 100,
+    "chat_timeout_seconds": 90
+  },
+  "limitations": [
+    "Small fixed, developer-authored cases; no held-out legal benchmark or expert correctness review.",
+    "Sequential requests, not throughput, concurrent capacity, availability SLA or a load test.",
+    "Public API timings include client-network and server/provider time, exclude browser rendering and Netlify UI.",
+    "API preflight runs before chat; idle/cold state is not controlled. No cold-start improvement claim.",
+    "Intake timings call the real local service/Groq, not deployed registered-account HTTP/auth/persistence.",
+    "Field scores compare normalized exact values on five named scalar fields, not descriptions, remedies or legal validity.",
+    "Scope denominator includes all planned intake cases; field precision/recall only use successful provider responses.",
+    "Grounding is a deterministic evidence-support observation, never legal accuracy.",
+    "No live private-document RAG, indexing, browser flow, two-user isolation or stress test performed.",
+    "No missing results are removed. Harness does not retry failed cases; app/SDK retry policies remain unchanged.",
+    "Failure diagnostics contain allowlisted category/status only; no error bodies/messages/URLs.",
+    "End-to-end expected-fact recall includes every planned fixture fact, including unavailable calls."
+  ],
+  "providers": {
+    "web_local_setting": "tavily",
+    "public_deployed_commit": "not_exposed_by_health_endpoint",
+    "intake_model": "openai/gpt-oss-120b"
+  },
+  "web": {
+    "preflight": {
+      "status": "ok",
+      "elapsed_seconds": 0.363657,
+      "note": "Single preflight observation; prior idle/cold state not controlled"
+    },
+    "rows": [
+      {
+        "id": "affidavit",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 6.475258,
+        "first_answer_seconds": 4.764776042000449,
+        "source_count": 5,
+        "source_domains": [
+          "blog.ipleaders.in",
+          "en.wikipedia.org",
+          "melento.ai",
+          "nriway.com",
+          "www.draftbotpro.com"
+        ],
+        "route": "web",
+        "answer_characters": 1036,
+        "answer_sha256": "aeb7b69f33d9e1f41f4edda4c4ae58e341cb30a07267a8d523009fb278340ed1",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.5,
+        "claim_summary": {
+          "total_claims": 6,
+          "supported_claims": 0,
+          "partial_claims": 6,
+          "unsupported_claims": 0,
+          "legal_claims": 2
+        }
+      },
+      {
+        "id": "consumer-helpline",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 4.918245,
+        "first_answer_seconds": 3.979519707999316,
+        "source_count": 5,
+        "source_domains": [
+          "consumeraffairs.gov.in",
+          "consumerhelpline.gov.in",
+          "web.umang.gov.in",
+          "www.pib.gov.in"
+        ],
+        "route": "web",
+        "answer_characters": 676,
+        "answer_sha256": "c36671c4959c31ee7e36060b07bb874933f46a6eb585175d71ae561ea3ff2c39",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.6667,
+        "claim_summary": {
+          "total_claims": 6,
+          "supported_claims": 2,
+          "partial_claims": 4,
+          "unsupported_claims": 0,
+          "legal_claims": 0
+        }
+      },
+      {
+        "id": "fir",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 14.143833,
+        "first_answer_seconds": 12.24497433399938,
+        "source_count": 5,
+        "source_domains": [
+          "blog.ipleaders.in",
+          "kishanganj.nic.in",
+          "officeofpartapsingh.com",
+          "www.delhilawacademy.com",
+          "www.quora.com"
+        ],
+        "route": "web",
+        "answer_characters": 1040,
+        "answer_sha256": "6ecdc10684d25a8437da83a4ec7ffe9cd7a654cf8df54c2b92513a0a8f64fb59",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.625,
+        "claim_summary": {
+          "total_claims": 8,
+          "supported_claims": 2,
+          "partial_claims": 6,
+          "unsupported_claims": 0,
+          "legal_claims": 1
+        }
+      },
+      {
+        "id": "complaint-status",
+        "status": "request_failed",
+        "http_status": 200,
+        "elapsed_seconds": 28.865438,
+        "first_answer_seconds": 28.68425954199938,
+        "source_count": 0,
+        "source_domains": [],
+        "route": null,
+        "answer_characters": 207,
+        "answer_sha256": "e9b60b14ab7734af603fe6a93c116adf2e8f1ee9c8738dcc41a4f20b2ff7846e",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": null,
+        "claim_summary": {},
+        "failure": {
+          "category": "network_error"
+        }
+      },
+      {
+        "id": "fundamental-duties",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 39.414271,
+        "first_answer_seconds": 36.80837625000004,
+        "source_count": 5,
+        "source_domains": [
+          "blog.ipleaders.in",
+          "svlnsgdc.ac.in",
+          "unacademy.com",
+          "www.surendranathcollege.ac.in",
+          "www.youtube.com"
+        ],
+        "route": "web",
+        "answer_characters": 995,
+        "answer_sha256": "01bb258b12fe0b177f67f8f81722058331be793583bdcf965c2fc7ec5727e8a2",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.8462,
+        "claim_summary": {
+          "total_claims": 13,
+          "supported_claims": 10,
+          "partial_claims": 2,
+          "unsupported_claims": 1,
+          "legal_claims": 3
+        }
+      }
+    ],
+    "summary": {
+      "planned": 5,
+      "completed_with_answer_and_sources": 4,
+      "status_counts": {
+        "ok": 4,
+        "request_failed": 1
+      },
+      "successful_first_answer": {
+        "n": 4,
+        "min_seconds": 3.98,
+        "median_seconds": 8.505,
+        "max_seconds": 36.808
+      },
+      "successful_completion": {
+        "n": 4,
+        "min_seconds": 4.918,
+        "median_seconds": 10.31,
+        "max_seconds": 39.414
+      },
+      "all_attempt_completion": {
+        "n": 5,
+        "min_seconds": 4.918,
+        "median_seconds": 14.144,
+        "max_seconds": 39.414
+      }
+    }
+  },
+  "finished_at_utc": "2026-10-20T07:47:37.306580+00:00"
+}

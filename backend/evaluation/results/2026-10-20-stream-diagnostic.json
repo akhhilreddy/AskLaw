@@ -1,0 +1,51 @@
+{
+  "purpose": "single diagnostic reproduction; not a benchmark replacement",
+  "started_at_utc": "2026-10-20T07:56:17.130083+00:00",
+  "settings": {
+    "health_timeout_seconds": 100,
+    "stream_timeout_seconds": 90,
+    "http2": false
+  },
+  "stream": {
+    "id": "complaint-status",
+    "status": "ok",
+    "http_status": 200,
+    "elapsed_seconds": 4.297579,
+    "first_answer_seconds": 2.4911847089997536,
+    "source_count": 5,
+    "source_domains": [
+      "consumeraffairs.gov.in",
+      "consumerhelpline.gov.in",
+      "ssrana.in",
+      "www.edrafter.in",
+      "www.india.gov.in"
+    ],
+    "route": "web",
+    "answer_characters": 1032,
+    "answer_sha256": "655869490b5e4ef6153f71840178147fc41caefb4f3608b2afa320215e4f8773",
+    "stream_errors": 0,
+    "insufficient_evidence": false,
+    "dependency_unavailable": false,
+    "grounding_score_observation_not_accuracy": 0.85,
+    "claim_summary": {
+      "total_claims": 10,
+      "supported_claims": 7,
+      "partial_claims": 3,
+      "unsupported_claims": 0,
+      "legal_claims": 1
+    },
+    "stage": "closed",
+    "event_counts": {
+      "token": 237,
+      "sources": 1,
+      "verification": 1,
+      "route": 1
+    },
+    "headers_seconds": 0.310006,
+    "first_event_seconds": 2.491185,
+    "last_event_seconds": 4.293206,
+    "max_event_gap_seconds": 2.491185,
+    "http_version": "HTTP/1.1"
+  },
+  "finished_at_utc": "2026-10-20T07:56:22.485304+00:00"
+}

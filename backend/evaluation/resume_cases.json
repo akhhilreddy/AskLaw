@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "web_questions": [
+    {"id": "affidavit", "query": "What is an affidavit in India?"},
+    {"id": "consumer-helpline", "query": "What is the National Consumer Helpline in India?"},
+    {"id": "fir", "query": "What is an FIR in India?"},
+    {"id": "complaint-status", "query": "How can I check a consumer complaint status in India?"},
+    {"id": "fundamental-duties", "query": "What are fundamental duties in India?"}
+  ],
+  "intake_cases": [
+    {
+      "id": "explicit-laptop",
+      "description": "My name is Sample Buyer. I bought a laptop from Sample Electronics for INR 12,000 on 2026-10-01. It arrived broken on 2026-10-03. I want a refund.",
+      "supported": true,
+      "expected_fields": {"buyer_name": ["Sample Buyer"], "seller_name": ["Sample Electronics"], "product": ["laptop"], "amount_inr": ["12000.00"]},
+      "allowed_event_dates": ["2026-10-01", "2026-10-03"]
+    },
+    {
+      "id": "mixer-replacement",
+      "description": "I bought a mixer from Demo Appliances for Rs. 2,500. It stopped working. I want a replacement.",
+      "supported": true,
+      "expected_fields": {"seller_name": ["Demo Appliances"], "product": ["mixer"], "amount_inr": ["2500.00"]},
+      "allowed_event_dates": []
+    },
+    {
+      "id": "unknown-currency-date",
+      "description": "A phone I bought for 500 arrived damaged yesterday. The seller refused a refund. I want a refund.",
+      "supported": true,
+      "expected_fields": {"product": ["phone"]},
+      "allowed_event_dates": []
+    },
+    {
+      "id": "conflicting-amounts",
+      "description": "I bought a laptop from Sample Electronics. I paid INR 12,000, but the invoice says INR 13,000. It arrived broken. I want a refund.",
+      "supported": true,
+      "expected_fields": {"seller_name": ["Sample Electronics"], "product": ["laptop"], "amount_inr": ["12000.00", "13000.00"]},
+      "allowed_event_dates": []
+    },
+    {
+      "id": "out-of-scope-tenancy",
+      "description": "My landlord kept my rental security deposit after I moved out. I need help getting the tenancy deposit back.",
+      "supported": false,
+      "expected_fields": {},
+      "allowed_event_dates": []
+    },
+    {
+      "id": "out-of-scope-wages",
+      "description": "My employer withheld my salary. I want help recovering the wages from my employer.",
+      "supported": false,
+      "expected_fields": {},
+      "allowed_event_dates": []
+    }
+  ]
+}
