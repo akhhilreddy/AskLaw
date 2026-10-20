@@ -500,30 +500,6 @@ versus **1,982 locally counted text tokens**, with a 512-token completion cap on
 for that smoke test. Three simple lexical checks passed; they are not a semantic
 or legal accuracy score. No production performance improvement is claimed.
 
-Defensible résumé wording, with the small benchmark boundary kept explicit:
-
-> Built and tested a legal research and document workspace with **378 automated
-> tests**, covering authentication, owner-scoped retrieval, streaming/fallbacks,
-> agreement comparison and source-linked consumer-complaint preparation.
-
-> Evaluated Groq-powered complaint intake on **six fixed fictional scenarios**:
-> matched **12/12 annotated field-value targets** across four supported cases and
-> passed **6/6 scope checks**, with **2.25 s median service-level extraction time**
-> for the four supported cases.
-
-> Reduced research input-text tokens by **43.6% (3,512 to 1,982)** on a fixed
-> five-source synthetic web fixture while preserving all selected source passages
-> and references, with offline request budgeting and regression checks.
-
-Do not advertise “100% extraction accuracy,” “99.9% uptime,” “supports thousands
-of users,” or unqualified 1.88-second/7.5-second response times from these samples.
-The slow initial health response and fast subsequent probes support a cold-start
-explanation, but do not establish the exact server-side delay. The interrupted
-web stream still needs investigation; its sanitized network category does not
-identify which hop failed. A larger independently
-labelled dataset and repeatable production measurements are needed before broad
-quality/reliability claims; capacity testing remains a separate future step.
-
 ## Security and limitations
 
 - Access and refresh JWTs have distinct purposes. Protected routes require an access token; refresh uses an HttpOnly cookie. Production sets `COOKIE_SECURE=true`, uses explicit CORS origins, and checks browser origins on cookie-sensitive authentication endpoints.
