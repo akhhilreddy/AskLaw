@@ -400,6 +400,7 @@ Evidence: [19 October report](backend/evaluation/results/2026-10-19-live-resume.
 [20 October follow-up](backend/evaluation/results/2026-10-20-live-resume-followup.json),
 [20 October web-only / 100-second setup budget](backend/evaluation/results/2026-10-20-live-web-100s.json),
 [20 October post-deployment web run](backend/evaluation/results/2026-10-20-postdeploy-web.json),
+[20 October compact-prompt deployment run](backend/evaluation/results/2026-10-20-postdeploy-compact-web.json),
 [fixed cases](backend/evaluation/resume_cases.json),
 [runner](backend/evaluation/measure_resume.py), and
 [methodology / reproduction commands](backend/evaluation/README.md#reproducible-résumé-measurements).
@@ -425,6 +426,7 @@ Evidence: [19 October report](backend/evaluation/results/2026-10-19-live-resume.
 | Post-deployment successful web latency | First answer median **5.329 s**; completion median **7.249 s**, range **5.314–33.043 s**, n=4 | Includes a slow answer with retry progress; not a causal speed-up claim or an all-request guarantee |
 | Post-deployment stream progress | All five had request IDs and progress; largest observed event gap **1.566 s** | Client-observed event delivery, including time before the first event; not answer-token throughput or a general reliability SLA |
 | Local compact-prompt measurement | Five-source web: **3,512 → 1,982 input-text tokens (43.6% lower)**; RAG-one **2,338 → 805 (65.6% lower)**; hybrid-five **3,519 → 1,986 (43.6% lower)** | Paired frozen fictional fixtures, same evidence/reference text, offline o200k ordinary-text counts; not production/billed-token or latency savings |
+| Compact-prompt deployment web run (20 October) | **5/5 answers completed, five sources each**; first-answer median **4.725 s**, completion median **6.724 s** (range **4.609–11.559 s**, n=5) | One fixed sequential pass, no reruns; one request had provider-retry progress. No client transport or terminal errors. Not uptime, legal accuracy or a proven causal speed-up |
 | Curated offline routing checks | **7/7 passed** | Small developer-authored fixture set, not held-out routing accuracy |
 | Curated claim-support checks | **5/5 passed** | Deterministic verifier behavior, not expert legal correctness |
 
@@ -481,7 +483,14 @@ dependency and approximately 4 MB of vocabulary data; no Dockerfile or environme
 file was edited. The 128-token chat-framing allowance is explicit, not exact billed
 usage. Conversation and Complaint Pack prompts, model and chat output cap remain
 unchanged. This reduces per-request demand, not the shared provider quota, so 429s
-remain possible. The compact prompt is **not yet deployed**.
+remain possible. After the maintainer confirmed deployment, one new five-question
+live pass completed all five answers with source, verification and final-route
+metadata. One answer still required provider-retry progress. The verifier flagged
+one unsupported claim across this sample; completion is not legal correctness.
+Correlated maintainer-supplied Render logs show four request reservations of
+3,605–4,311 tokens, below the 6,144 limit (not billed usage); the fifth budget
+line was not supplied. They confirm one HTTP 429 retry with a 4-second wait,
+followed by completion. Earlier production failures remain recorded separately.
 
 The [paired report](backend/evaluation/results/2026-10-20-prompt-comparison.json)
 retains matching fixture/evidence hashes and the old prompt hash from `faa7d8a`.

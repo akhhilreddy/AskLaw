@@ -371,5 +371,50 @@ Async parsing/privacy/failure accounting are covered by two offline tests.
 Full local regression checks after this change: **336 backend + 42 frontend**
 (378 total), lint/build/compile/diff checks passed. Existing Vite chunk warning
 remains. Tokenizer dependency/vocabulary were added; no `.env`, Dockerfile or
-hosting settings were changed. These prompt changes still need deployment and a
-new separately recorded live test; earlier production artifacts remain unchanged.
+hosting settings were changed. The maintainer subsequently confirmed deployment;
+the separate live test below does not replace any earlier production artifacts.
+
+### Compact-prompt deployment: one live pass, 20 October
+
+Artifact: [2026-10-20-postdeploy-compact-web.json](results/2026-10-20-postdeploy-compact-web.json).
+Executed once at 12:54:26–12:55:12 UTC (18:24:26–18:25:12 IST), from local
+commit `63ccf76`, using the unchanged post-deployment harness and five fixed cases.
+One guest, five sequential questions, no failed-case reruns, no intake calls.
+
+| Observation | Result |
+| --- | --- |
+| Health preflight | 0.532 s; idle/cold state uncontrolled |
+| Completed answers with sources, verification and final web route | 5/5; five sources each |
+| First answer | Median 4.725 s, range 3.499–8.966 s; n=5 |
+| Complete stream | Median 6.724 s, range 4.609–11.559 s; n=5 |
+| Client transport exceptions / terminal stream errors | 0 / 0 |
+| Provider retry progress | Fundamental-duties case: five progress events, not five retries; completed in 11.559 s |
+| Largest observed initial/inter-event gap | 4.782 s; client delivery observation, not a heartbeat SLA |
+
+All five streams closed normally. The deterministic verifier flagged one
+unsupported claim in the complaint-status answer; several other claims were only
+partially supported. Source domains include commentary and secondary material,
+so neither legal accuracy nor consistently primary-source coverage was validated.
+Do not claim zero upstream 429s: retry events lack the provider HTTP status.
+Render `phase=budget` counts are not exposed to the client. The maintainer supplied
+matching server logs after the run, confirming these local estimates/reservations:
+
+| Case | Input-text tokens | Framing allowance | Completion reservation | Total reserved |
+| --- | --- | --- | --- | --- |
+| Consumer helpline | 1,429 | 128 | 2,048 | 3,605 |
+| FIR | 2,135 | 128 | 2,048 | 4,311 |
+| Complaint status | 1,498 | 128 | 2,048 | 3,674 |
+| Fundamental duties | 2,105 | 128 | 2,048 | 4,281 |
+
+All shown totals were below the 6,144 request budget. The affidavit budget line
+was absent from the supplied excerpt; it is not inferred. These are not billed
+usage. Matching fundamental-duties logs confirm one retry after HTTP 429 with a
+4-second wait, followed by completion. All five matching requests completed;
+the subsequent graceful shutdown's cause is not established by these logs.
+
+The artifact's `harness_uncommitted: true` flag reflects the harness's broad
+whole-worktree dirty check (the pre-existing untracked `output/` directory), not
+modified benchmark code. The runner, observer, entrypoint and fixed cases were
+byte-checked against `63ccf76` and matched. The deployed revision is maintainer
+reported, not independently exposed by `/health`. No controlled causal latency,
+quota-elimination, legal-quality or general reliability claim follows from 5/5.

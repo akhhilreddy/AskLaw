@@ -1,0 +1,454 @@
+{
+  "schema_version": 2,
+  "harness_version": "4",
+  "harness_sha256": "0aec57248e120316ca0186bf0510363987e2c1b0ac5f89f22f2e1902cef038cb",
+  "legacy_cases_sha256": "2b8d539de96433970743ef4c1200a9559cd47d1fbe67e8591e7a9624270d4c09",
+  "started_at_utc": "2026-10-20T12:54:26.864836+00:00",
+  "git_commit": "63ccf7681e66b7e1f41a8212541ff6be927e14f5",
+  "harness_uncommitted": true,
+  "python": "3.14.3",
+  "cases_sha256": "f09f72ff6348193282d4a3f15875713984269b1dd9d43c793b8a4f1efc6a6346",
+  "mode": "live",
+  "offline_curated_cases": [
+    {
+      "id": "document-exact-provision",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-semantic",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-unsupported",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "document-isolation",
+      "metric": "route",
+      "expected": "rag",
+      "observed": "rag",
+      "pass": true
+    },
+    {
+      "id": "web-current-law",
+      "metric": "route",
+      "expected": "web",
+      "observed": "web",
+      "pass": true
+    },
+    {
+      "id": "web-source-retrieval",
+      "metric": "route",
+      "expected": "web",
+      "observed": "web",
+      "pass": true
+    },
+    {
+      "id": "hybrid-provision-development",
+      "metric": "route",
+      "expected": "hybrid",
+      "observed": "hybrid",
+      "pass": true
+    },
+    {
+      "id": "verification-supported",
+      "metric": "claim_support",
+      "expected": "supported",
+      "observed": [
+        "supported"
+      ],
+      "grounding_score": 1.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 1,
+        "partial_claims": 0,
+        "unsupported_claims": 0,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-partial",
+      "metric": "claim_support",
+      "expected": "partial",
+      "observed": [
+        "partial"
+      ],
+      "grounding_score": 0.5,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 1,
+        "unsupported_claims": 0,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-unsupported",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 0
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-numeric-mismatch",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 1
+      },
+      "pass": true
+    },
+    {
+      "id": "verification-identifier-mismatch",
+      "metric": "claim_support",
+      "expected": "unsupported",
+      "observed": [
+        "unsupported"
+      ],
+      "grounding_score": 0.0,
+      "support_counts": {
+        "total_claims": 1,
+        "supported_claims": 0,
+        "partial_claims": 0,
+        "unsupported_claims": 1,
+        "legal_claims": 1
+      },
+      "pass": true
+    }
+  ],
+  "measurement_settings": {
+    "live_section": "web",
+    "health_timeout_seconds": 100,
+    "chat_timeout_seconds": 90
+  },
+  "limitations": [
+    "Small fixed, developer-authored cases; no held-out legal benchmark or expert correctness review.",
+    "Sequential requests, not throughput, concurrent capacity, availability SLA or a load test.",
+    "Public API timings include client-network and server/provider time, exclude browser rendering and Netlify UI.",
+    "API preflight runs before chat; idle/cold state is not controlled. No cold-start improvement claim.",
+    "Intake timings call the real local service/Groq, not deployed registered-account HTTP/auth/persistence.",
+    "Field scores compare normalized exact values on five named scalar fields, not descriptions, remedies or legal validity.",
+    "Scope denominator includes all planned intake cases; field precision/recall only use successful provider responses.",
+    "Grounding is a deterministic evidence-support observation, never legal accuracy.",
+    "No live private-document RAG, indexing, browser flow, two-user isolation or stress test performed.",
+    "No missing results are removed. Harness does not retry failed cases; app/SDK retry policies remain unchanged.",
+    "Failure diagnostics contain allowlisted category/status only; no error bodies/messages/URLs.",
+    "End-to-end expected-fact recall includes every planned fixture fact, including unavailable calls."
+  ],
+  "providers": {
+    "web_local_setting": "tavily",
+    "public_deployed_commit": "not_exposed_by_health_endpoint",
+    "intake_model": "openai/gpt-oss-120b"
+  },
+  "web": {
+    "preflight": {
+      "status": "ok",
+      "elapsed_seconds": 0.531951,
+      "note": "Single preflight observation; prior idle/cold state not controlled"
+    },
+    "rows": [
+      {
+        "id": "affidavit",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 10.272496,
+        "first_answer_seconds": 8.223206083999685,
+        "source_count": 5,
+        "source_domains": [
+          "blog.ipleaders.in",
+          "en.wikipedia.org",
+          "nriway.com",
+          "www.draftbotpro.com"
+        ],
+        "route": "web",
+        "answer_characters": 1171,
+        "terminal_route_received": true,
+        "answer_sha256": "1a86ec5d9fa62e1f3d8307b58a63268e7d05ee605eb29f25bcb44f2caf7813cf",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.5833,
+        "claim_summary": {
+          "total_claims": 6,
+          "supported_claims": 1,
+          "partial_claims": 5,
+          "unsupported_claims": 0,
+          "legal_claims": 2
+        },
+        "progress_codes": {
+          "research_pending": 3,
+          "provider_pending": 1
+        },
+        "error_codes": {},
+        "stage": "closed",
+        "event_counts": {
+          "progress": 4,
+          "token": 256,
+          "sources": 1,
+          "verification": 1,
+          "route": 1
+        },
+        "headers_seconds": 0.293645,
+        "first_event_seconds": 1.339336,
+        "last_event_seconds": 10.269786,
+        "max_event_gap_seconds": 4.782047,
+        "http_version": "HTTP/1.1",
+        "request_id": "10de82443ea648ffa8dd1a382c35372a"
+      },
+      {
+        "id": "consumer-helpline",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 5.636065,
+        "first_answer_seconds": 3.948022917000344,
+        "source_count": 5,
+        "source_domains": [
+          "consumeraffairs.gov.in",
+          "consumerhelpline.gov.in",
+          "web.umang.gov.in",
+          "www.pib.gov.in"
+        ],
+        "route": "web",
+        "answer_characters": 992,
+        "terminal_route_received": true,
+        "answer_sha256": "3de389a23cfe01bb9e7ba853b570794c255a5733788083cfe23247392028728f",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.6667,
+        "claim_summary": {
+          "total_claims": 6,
+          "supported_claims": 2,
+          "partial_claims": 4,
+          "unsupported_claims": 0,
+          "legal_claims": 1
+        },
+        "progress_codes": {
+          "research_pending": 2
+        },
+        "error_codes": {},
+        "stage": "closed",
+        "event_counts": {
+          "progress": 2,
+          "token": 229,
+          "sources": 1,
+          "verification": 1,
+          "route": 1
+        },
+        "headers_seconds": 0.347943,
+        "first_event_seconds": 1.402437,
+        "last_event_seconds": 5.633244,
+        "max_event_gap_seconds": 1.545388,
+        "http_version": "HTTP/1.1",
+        "request_id": "2601e10e66e14d35bea341acf5baa1b1"
+      },
+      {
+        "id": "fir",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 4.60871,
+        "first_answer_seconds": 3.498872875003144,
+        "source_count": 5,
+        "source_domains": [
+          "kishanganj.nic.in",
+          "officeofpartapsingh.com",
+          "primelegal.in",
+          "vaquill.com",
+          "www.delhilawacademy.com"
+        ],
+        "route": "web",
+        "answer_characters": 586,
+        "terminal_route_received": true,
+        "answer_sha256": "ae2a11d1db3db1bae10c809e47984c3a8b7951cebb819e21ec50b869c9c6f64c",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.625,
+        "claim_summary": {
+          "total_claims": 4,
+          "supported_claims": 1,
+          "partial_claims": 3,
+          "unsupported_claims": 0,
+          "legal_claims": 1
+        },
+        "progress_codes": {
+          "research_pending": 2
+        },
+        "error_codes": {},
+        "stage": "closed",
+        "event_counts": {
+          "progress": 2,
+          "token": 112,
+          "sources": 1,
+          "verification": 1,
+          "route": 1
+        },
+        "headers_seconds": 0.331751,
+        "first_event_seconds": 1.373839,
+        "last_event_seconds": 4.606752,
+        "max_event_gap_seconds": 1.373839,
+        "http_version": "HTTP/1.1",
+        "request_id": "3c5dba60278549e480a13c6b787e44eb"
+      },
+      {
+        "id": "complaint-status",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 6.724144,
+        "first_answer_seconds": 4.724514749999798,
+        "source_count": 5,
+        "source_domains": [
+          "consumeraffairs.gov.in",
+          "consumerhelpline.gov.in",
+          "e-jagriti.gov.in",
+          "www.india.gov.in"
+        ],
+        "route": "web",
+        "answer_characters": 1287,
+        "terminal_route_received": true,
+        "answer_sha256": "87d07f29e48dda59331f5690ecc3de2e71888d0c4b4d7417f18ac5243b562dc8",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.4444,
+        "claim_summary": {
+          "total_claims": 9,
+          "supported_claims": 0,
+          "partial_claims": 8,
+          "unsupported_claims": 1,
+          "legal_claims": 0
+        },
+        "progress_codes": {
+          "research_pending": 3,
+          "provider_pending": 1
+        },
+        "error_codes": {},
+        "stage": "closed",
+        "event_counts": {
+          "progress": 4,
+          "token": 324,
+          "sources": 1,
+          "verification": 1,
+          "route": 1
+        },
+        "headers_seconds": 0.332516,
+        "first_event_seconds": 1.346155,
+        "last_event_seconds": 6.69523,
+        "max_event_gap_seconds": 1.346155,
+        "http_version": "HTTP/1.1",
+        "request_id": "194c99d513344765b73593807c761725"
+      },
+      {
+        "id": "fundamental-duties",
+        "status": "ok",
+        "http_status": 200,
+        "elapsed_seconds": 11.559113,
+        "first_answer_seconds": 8.965965333001805,
+        "source_count": 5,
+        "source_domains": [
+          "blog.ipleaders.in",
+          "store.pw.live",
+          "svlnsgdc.ac.in",
+          "unacademy.com",
+          "www.scribd.com"
+        ],
+        "route": "web",
+        "answer_characters": 1276,
+        "terminal_route_received": true,
+        "answer_sha256": "a0e2980e3a473d9b3a1d0251deddac50171af8a050172bce0bf22ddc1cb77ccc",
+        "stream_errors": 0,
+        "insufficient_evidence": false,
+        "dependency_unavailable": false,
+        "grounding_score_observation_not_accuracy": 0.7143,
+        "claim_summary": {
+          "total_claims": 14,
+          "supported_claims": 6,
+          "partial_claims": 8,
+          "unsupported_claims": 0,
+          "legal_claims": 3
+        },
+        "progress_codes": {
+          "research_pending": 3,
+          "provider_retrying": 5
+        },
+        "error_codes": {},
+        "stage": "closed",
+        "event_counts": {
+          "progress": 8,
+          "token": 287,
+          "sources": 1,
+          "verification": 1,
+          "route": 1
+        },
+        "headers_seconds": 0.297354,
+        "first_event_seconds": 1.320473,
+        "last_event_seconds": 11.555471,
+        "max_event_gap_seconds": 1.411376,
+        "http_version": "HTTP/1.1",
+        "request_id": "3ec0e46e2389424f8bcd019d3bb1fc7f"
+      }
+    ],
+    "summary": {
+      "planned": 5,
+      "completed_with_answer_and_sources": 5,
+      "status_counts": {
+        "ok": 5
+      },
+      "successful_first_answer": {
+        "n": 5,
+        "min_seconds": 3.499,
+        "median_seconds": 4.725,
+        "max_seconds": 8.966
+      },
+      "successful_completion": {
+        "n": 5,
+        "min_seconds": 4.609,
+        "median_seconds": 6.724,
+        "max_seconds": 11.559
+      },
+      "all_attempt_completion": {
+        "n": 5,
+        "min_seconds": 4.609,
+        "median_seconds": 6.724,
+        "max_seconds": 11.559
+      }
+    }
+  },
+  "finished_at_utc": "2026-10-20T12:55:12.445081+00:00",
+  "instrumentation": {
+    "entrypoint": "evaluation/measure_postdeploy.py",
+    "entrypoint_sha256": "e2db87a4e5df1045d5746d2b13659edb25e6b44e0054d2879244ceb57cc99f3c",
+    "diagnostic_sha256": "a519b8f6cb398852d076687f8fab76afe58b0dcec754cec0e00185efbf420bf8",
+    "method": "same five web cases and one guest; diagnostic observer adds allowlisted event counts, request IDs and timings",
+    "deployed_revision": "maintainer reports deployment complete; exact commit not exposed by health"
+  }
+}
